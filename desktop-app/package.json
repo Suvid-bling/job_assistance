@@ -1,0 +1,154 @@
+{
+  "name": "bossclaw-desktop",
+  "version": "2.6.2",
+  "description": "BossClaw —— 面向求职者的本地 AI 投递助手",
+  "private": true,
+  "author": "YanQuan",
+  "license": "Apache-2.0",
+  "main": "electron/main.cjs",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:electron": "vite build && electron . --dev",
+    "typecheck": "tsc -b --pretty",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "package": "npm run build && electron-builder --win",
+    "package:portable": "npm run build && electron-builder --win portable",
+    "package:dir": "npm run build && electron-builder --win --dir",
+    "package:mac": "npm run build && electron-builder --mac",
+    "package:linux": "npm run build && electron-builder --linux",
+    "package:all": "npm run build && electron-builder --win --linux",
+    "start": "electron .",
+    "verify": "npm run typecheck && npm run lint && npm run build",
+    "verify:all": "npm run typecheck && npm run lint && npm run test:all && npm run build",
+    "lint": "eslint src electron scripts",
+    "lint:fix": "eslint src electron scripts --fix",
+    "test:all": "node scripts/test-all.mjs",
+    "test:queue-store": "node scripts/queue-store-regression.mjs",
+    "test:ipc": "node scripts/ipc-channel-parity.mjs",
+    "test:theme-vars": "node scripts/theme-vars-regression.mjs",
+    "test:context-budget": "node scripts/context-budget-regression.mjs",
+    "test:update": "node scripts/update-check-regression.mjs",
+    "test:mock-interview": "node scripts/mock-interview-score-regression.mjs",
+    "test:tailor-job": "node scripts/tailor-job-regression.mjs",
+    "test:tailor-batch": "node scripts/tailor-batch-regression.mjs",
+    "test:tailor-iteration": "node scripts/tailor-iteration-regression.mjs",
+    "test:webview-send": "node scripts/webview-send-regression.mjs",
+    "test:webview-native-send": "node scripts/webview-native-send-regression.mjs",
+    "test:liepin-im": "node scripts/liepin-im-regression.mjs",
+    "test:liepin-delivery": "python -m unittest discover -s camoufox/tests -p \"test_liepin_delivery.py\"",
+    "test:mock-interview-tts": "node scripts/mock-interview-tts-smoke.mjs",
+    "test:bank": "node scripts/bank-recall-regression.mjs && node scripts/bank-repo-smoke.mjs",
+    "build:bank": "node scripts/build-bank.mjs",
+    "test:mock-interview-delivery": "node scripts/mock-interview-delivery-regression.mjs",
+    "test:mock-interview-asr": "node scripts/mock-interview-asr-smoke.mjs",
+    "test:mock-interview-clone": "node scripts/mock-interview-clone-smoke.mjs",
+    "test:mock-interview-stream": "node scripts/tts-stream-regression.mjs && node scripts/tts-pcm-regression.mjs",
+    "test:voice": "node scripts/voice-repo-regression.mjs && node scripts/voice-pack-regression.mjs",
+    "test:edge-tts": "node scripts/edge-tts-protocol-regression.mjs && node scripts/edge-tts-service-regression.mjs",
+    "test:boss-filters": "python -m unittest discover -s camoufox/tests -p \"test_boss_filters.py\"",
+    "test:camo-progress": "python -m unittest discover -s camoufox/tests -p \"test_progress_resume.py\""
+  },
+  "build": {
+    "appId": "com.bossclaw.desktop",
+    "productName": "BossClaw",
+    "copyright": "Copyright © 2026 BossClaw",
+    "icon": "resources/icon.ico",
+    "afterPack": "build/after-pack-win-icon.js",
+    "publish": null,
+    "asar": false,
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "bridge/**/*",
+      "camoufox/**/*",
+      "skills/**/*",
+      "resources/**/*",
+      "node_modules/sherpa-onnx-*/**",
+      "package.json",
+      "!**/*.pyc",
+      "!**/__pycache__",
+      "!**/.venv/**"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/docs/使用前必读.md",
+        "to": "docs/使用前必读.md"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "signAndEditExecutable": false,
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "BossClaw"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "resources/icon.png",
+      "category": "public.app-category.productivity",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "resources/icon.png",
+      "category": "Office",
+      "maintainer": "YanQuan <yanquan@bossclaw.dev>",
+      "synopsis": "BossClaw 求职投递助手",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    }
+  },
+  "dependencies": {
+    "@ant-design/icons": "^5.5.1",
+    "antd": "^5.21.6",
+    "cloakbrowser": "^0.5.7",
+    "mammoth": "^1.8.0",
+    "playwright-core": "1.62",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sherpa-onnx-node": "^1.13.8",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "electron": "^42.11.10",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.21.5",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^15.15.0",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^5.4.9"
+  }
+}

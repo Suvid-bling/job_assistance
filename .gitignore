@@ -1,0 +1,90 @@
+# Project guidance (kept local, not committed)
+AGENTS.md
+
+# Release binaries (published via GitHub Releases, not committed)
+BossClaw-*.exe
+desktop-app/release/*.exe
+
+# macOS / Windows
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+
+# Dependencies and generated output
+node_modules/
+source/node_modules/
+coverage/
+*.log
+*.tmp
+*.cache
+*.zip
+*.sha256
+
+# --- desktop-app 环境 / 产物 / 第三方依赖（clone 后由脚本自行安装）---
+desktop-app/dist/
+desktop-app/release/
+desktop-app/tmp/
+# 简历模板原型 / PDF 预览 / 截图等开发草稿（产线模板已内联进 src/lib/bossclaw/resumePdf.ts）
+desktop-app/scripts-tmp/
+desktop-app/node_modules/
+# 第三方 cloakbrowser 源码副本（npm 包即可，无需入库）
+desktop-app/cloakbrowser/
+desktop-app/camoufox/__pycache__/
+desktop-app/debug-render.log
+desktop-app/smoke.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 本地工具数据（不可上传）
+.workbuddy/
+.trae/
+
+
+# Secrets and local settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.jobclaw/
+**/.jobclaw/
+
+# Local user data and stray artifacts
+# 顶层 skills / scripts 为本地沙箱辅助，不入仓库根（软件内置技能在 desktop-app/skills）
+/skills/
+/scripts/
+# GitHub Actions 构建流水线随仓库分发（workflow 只含构建步骤与校验和，无用户数据）。
+# 注意写法：必须先排除 .github/* 再包含 workflows —— 直接排除 .github/ 后无法再用 ! 取回子目录。
+.github/*
+!.github/workflows/
+*resume*.pdf
+*resume*.docx
+*简历*.pdf
+*简历*.docx
+*.diagnostic.json
+*.local.json
+
+# MCP 本地持久化残留（bossclaw_workspace 已删除，仅保留忽略规则防历史文件入库）
+mcp/bossclaw-mcp/.workspace-root
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Local agent sandbox (design-skill copies, not part of the app)
+/.agents/
+
+# 封面设计草稿（本地素材，不入库）
+bossclaw-cover.miora
+/bossclaw-cover_assets/
+
+# 代码图谱分析产物（graphify 本地生成，约 8MB，不入库）
+graphify-out/
+graphify-project-graph.html

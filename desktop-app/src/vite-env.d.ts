@@ -1,0 +1,175 @@
+/// <reference types="vite/client" />
+
+// 主窗口 preload 暴露的安全接口（electron/preload/app.cjs）
+interface ElectronBridgeApi {
+  versions?: { electron?: string; chrome?: string; node?: string };
+  getAppInfo?: () => Promise<{ name: string; version: string }>;
+  openExternal?: (url: string) => void;
+  // 读取「使用前必读」文档（首页「阅读使用文档」入口）
+  readDoc?: () => Promise<{ ok: boolean; text?: string; file?: string; error?: string }>;
+  bossLogin?: () => Promise<unknown>;
+  bossLogout?: (platform: string) => Promise<{ ok: boolean; removed?: number; error?: string }>;
+  // 本地桥（OpenClaw）访问令牌（随机生成，存于 ~/.bossclaw/bridge-token）
+  bridgeToken?: () => Promise<string>;
+  webviewPreload?: string;
+  invoke?: (channel: string, ...args: unknown[]) => Promise<unknown>;
+  send?: (channel: string, ...args: unknown[]) => void;
+  on?: (channel: string, callback: (...args: unknown[]) => void) => () => void;
+  // 窗口控制（frame:false 自绘标题栏）
+  winMinimize?: () => void;
+  winMaximize?: () => void;
+  winClose?: () => void;
+  winIsMaximized?: () => Promise<boolean>;
+  onWindowMaximized?: (callback: (maximized: boolean) => void) => () => void;
+  // 窗口置顶（标题栏图钉按钮）
+  winAlwaysOnTop?: () => Promise<boolean>;
+  winAlwaysOnTopSet?: (value: boolean) => void;
+  onWindowAlwaysOnTopChanged?: (callback: (isOnTop: boolean) => void) => () => void;
+  // 系统通知 / 托盘常驻（设置页开关；主进程按同一份偏好再拦截一次）
+  notify?: (payload: { title?: string; body?: string }) => Promise<{ ok: boolean; skipped?: string; error?: string }>;
+  setTrayPrefs?: (prefs: { closeToTray?: boolean; notify?: boolean }) => void;
+  // Camoufox 隐身引擎（可选增强，Python 桥）——platform 参数（boss/liepin/zhaopin/job51）
+  camoufoxStatus?: (platform?: string) => Promise<{ python: boolean; pythonCmd?: string | null; camoufox: boolean; running: boolean; ready: boolean; message?: string; engine?: unknown }>;  camoufoxCall?: (action: string, payload?: Record<string, unknown>) => Promise<any>;
+  camoufoxStop?: () => void;
+  camoufoxRestart?: (platform?: string) => Promise<{ python: boolean; pythonCmd?: string | null; camoufox: boolean; running: boolean; ready: boolean; installing?: boolean; message?: string; engine?: unknown }>;
+  // CloakBrowser 隐身浏览器（可选增强，Node + Playwright）
+  cloakBinary?: () => Promise<{ ok: boolean; binary?: any; error?: string }>;
+  cloakStart?: (opts?: { licenseKey?: string; proxy?: string }) => Promise<{ ok: boolean; ready?: boolean; error?: string }>;
+  cloakStop?: () => Promise<{ ok: boolean }>;
+  cloakStatus?: () => Promise<{ ready: boolean; starting: boolean; binary: any; lastError: string | null }>;
+  cloakPageNew?: (tabId: string, url?: string) => Promise<{ ok: boolean; tabId?: string; url?: string; title?: string; reused?: boolean; error?: string }>;
+  cloakPageClose?: (tabId: string) => Promise<{ ok: boolean; error?: string }>;
+  cloakPageNavigate?: (tabId: string, url: string) => Promise<{ ok: boolean; error?: string }>;
+  cloakPageBack?: (tabId: string) => Promise<{ ok: boolean; error?: string }>;
+  cloakPageForward?: (tabId: string) => Promise<{ ok: boolean; error?: string }>;
+  cloakPageReload?: (tabId: string) => Promise<{ ok: boolean; error?: string }>;
+  cloakPageSend?: (tabId: string, channel: string, payload?: any) => Promise<{ ok: boolean; error?: string }>;
+  cloakPageInput?: (tabId: string, action: string, text?: string) => Promise<{ ok: boolean; action?: string; error?: string }>;
+  cloakPageList?: () => Promise<{ ok: boolean; pages: Array<{ tabId: string; url: string; title: string }> }>;
+  onCloakEvent?: (callback: (event: { tabId: string; channel: string; payload: any }) => void) => () => void;
+  onCloakStatusChanged?: (callback: (status: { ready: boolean; starting: boolean; binary: any; lastError: string | null }) => void) => () => void;
+  // AI Skills 层（skills/<id>/SKILL.md，调用 AI 时按作用域启用）
+  skillsList?: () => Promise<Array<{ id: string; name: string; description: string; scope: string; defaultEnabled: boolean; custom?: boolean }>>;
+  skillsRead?: (id: string) => Promise<{ id: string; body: string }>;
+  skillsImport?: (payload: {
+    raw?: string;
+    fields?: { name: string; description?: string; scope: string; instructions: string };
+  }) => Promise<{ ok: boolean; skill?: { id: string; name: string; description: string; scope: string; defaultEnabled: boolean; custom: boolean }; error?: string }>;
+  skillsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  // 保存定制简历 PDF（主进程 printToPDF；html 为 A4 打印友好 HTML）
+  savePdf?: (defaultName: string, html: string) => Promise<{ ok: boolean; canceled?: boolean; filePath?: string; error?: string }>;
+  savePdfBatch?: (items: Array<{ fileName: string; html: string }>, requestId: string) => Promise<{
+    ok: boolean; canceled?: boolean; directory?: string; error?: string; total?: number;
+    results: Array<{ fileName: string; ok: boolean; filePath?: string; error?: string }>;
+  }>;
+  cancelPdfBatch?: (requestId: string) => Promise<{ ok: boolean }>;
+  onPdfBatchProgress?: (callback: (progress: { requestId: string; completed: number; total: number; fileName: string }) => void) => () => void;
+  // 通用文本导出（CSV）：主进程弹系统保存对话框由用户选择保存位置后写盘
+  saveFile?: (
+    defaultName: string,
+    content: string,
+    extWhitelist?: string[]
+  ) => Promise<{ ok: boolean; canceled?: boolean; filePath?: string; error?: string }>;
+  // 统计数据报表 PDF：A4 横版 printToPDF + 系统保存对话框
+  saveReportPdf?: (defaultName: string, html: string) => Promise<{ ok: boolean; canceled?: boolean; filePath?: string; error?: string }>;
+  // 在系统文件管理器中定位到指定文件
+  showItem?: (filePath: string) => Promise<{ ok: boolean; error?: string }>;
+  // 保存「达标岗位」数据到本地（dir 为空走保存对话框；dir 为绝对路径则在导出目录自动按天写文件）
+  saveQualifiedJobs?: (defaultName: string, jsonText: string, dir?: string) => Promise<{ ok: boolean; canceled?: boolean; filePath?: string; error?: string }>;
+  // 达标岗位导出目录：读取 / 设置 / 系统目录选择对话框（选择即应用并持久化）
+  qualifiedJobsDirGet?: () => Promise<{ dir?: string }>;
+  qualifiedJobsDirSet?: (dir: string) => Promise<{ ok?: boolean; dir?: string; error?: string }>;
+  qualifiedJobsDirPick?: () => Promise<{ ok?: boolean; canceled?: boolean; dir?: string; error?: string }>;
+  // 经历补充材料（只记文件路径；正文每次调用 AI 前现读，不缓存不持久化内容）
+  materialPick?: () => Promise<{ ok?: boolean; canceled?: boolean; paths?: { path: string; name: string }[]; error?: string }>;
+  materialRead?: (filePath: string) => Promise<{ ok?: boolean; name?: string; path?: string; dataUrl?: string; bytes?: number; error?: string }>;
+  // 开机自启动（Windows 登录项）
+  autostartGet?: () => Promise<{ ok?: boolean; openAtLogin?: boolean; error?: string }>;
+  autostartSet?: (enabled: boolean) => Promise<{ ok?: boolean; enabled?: boolean; error?: string }>;
+  // 本地数据备份目录（localStorage 主存储 + 周期脏检查写盘）
+  backupDir?: () => Promise<{ dir?: string; error?: string }>;
+  backupDirSet?: (dir: string) => Promise<{ ok?: boolean; dir?: string; error?: string }>;
+  backupDirPick?: () => Promise<{ ok?: boolean; canceled?: boolean; dir?: string; error?: string }>;
+  backupWrite?: (bundle: unknown) => Promise<{ ok?: boolean; file?: string; size?: number; error?: string }>;
+  backupRead?: () => Promise<{ ok?: boolean; file?: string | null; bundle?: { updatedAt?: number; keys?: Record<string, string | null> } | null; error?: string }>;
+  backupDelete?: () => Promise<{ ok?: boolean; error?: string }>;
+  // 岗位队列文件仓储（issue #10）：pending / qualifiedExports 存于 <userData>/queue/
+  // 'localstorage' 表示已通过 BOSSCLAW_QUEUE_STORE 环境变量回滚到旧路径
+  queueStoreMode?: 'file' | 'localstorage';
+  queueLoad?: () => Promise<{ ok: boolean; data?: unknown; source?: string; recovered?: boolean; corrupt?: boolean; error?: string }>;
+  queueSave?: (text: string, seq: number, opts?: { migrationSnapshot?: boolean }) => Promise<{ ok: boolean; stale?: boolean; seq?: number; bytes?: number; at?: number; error?: string }>;
+  queueClear?: () => Promise<{ ok: boolean; error?: string }>;
+  queueUsage?: () => Promise<{ ok: boolean; bytes?: number; bakBytes?: number; totalBytes?: number; error?: string }>;
+  // 模拟面试：会话文件存于 <userData>/mock-interview/（主进程持有，不进 localStorage）
+  mockInterviewList?: () => Promise<{ ok: boolean; sessions?: unknown[]; error?: string }>;
+  mockInterviewRead?: (id: string) => Promise<{ ok: boolean; session?: unknown; error?: string }>;
+  mockInterviewWrite?: (session: unknown, opts?: { immediate?: boolean }) => Promise<{ ok: boolean; stale?: boolean; error?: string }>;
+  mockInterviewDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  mockInterviewClear?: () => Promise<{ ok: boolean; error?: string }>;
+  mockInterviewClearSessions?: () => Promise<{ ok: boolean; error?: string }>;
+  mockInterviewExport?: () => Promise<{ ok: boolean; canceled?: boolean; filePath?: string; count?: number; error?: string }>;
+  mockInterviewUsage?: () => Promise<{ ok: boolean; count?: number; bytes?: number; error?: string }>;
+  // 模拟面试 · 题库（内置库随包只读，用户库写 userData/mock-interview/bank/）
+  mockInterviewBankList?: () => Promise<unknown>;
+  mockInterviewBankRead?: (bankId: string) => Promise<unknown>;
+  mockInterviewBankCreate?: (name: string, type?: string) => Promise<unknown>;
+  mockInterviewBankRename?: (bankId: string, name: string) => Promise<unknown>;
+  mockInterviewBankDelete?: (bankId: string) => Promise<unknown>;
+  mockInterviewBankToggle?: (bankId: string, enabled: boolean) => Promise<unknown>;
+  mockInterviewBankRestoreBuiltin?: () => Promise<unknown>;
+  mockInterviewBankAddQuestion?: (bankId: string, question: unknown) => Promise<unknown>;
+  mockInterviewBankUpdateQuestion?: (bankId: string, questionId: string, patch: unknown) => Promise<unknown>;
+  mockInterviewBankDeleteQuestion?: (bankId: string, questionId: string) => Promise<unknown>;
+  mockInterviewBankImport?: (bankId: string, questions: unknown, opts?: unknown) => Promise<unknown>;
+  mockInterviewBankUsage?: () => Promise<unknown>;
+  mockInterviewBankCacheRead?: () => Promise<unknown>;
+  mockInterviewBankCacheWrite?: (payload: string) => Promise<unknown>;
+  mockInterviewBankCacheClear?: () => Promise<unknown>;
+  // 模拟面试 · 语音（本地 sherpa-onnx；模型与缓存存 userData/speech/）
+  mockInterviewSpeechStatus?: () => Promise<unknown>;
+  mockInterviewSpeechInstall?: (pack?: string) => Promise<{ ok: boolean; bytes?: number; error?: string }>;
+  mockInterviewSpeechCancel?: () => Promise<{ ok: boolean; canceled?: boolean; error?: string }>;
+  mockInterviewSpeechRemove?: (pack?: string) => Promise<{ ok: boolean; error?: string }>;
+  mockInterviewSpeechSetOnline?: (on: boolean) => Promise<{ ok: boolean; onlineEngine?: boolean; error?: string }>;
+  mockInterviewSpeechSetPack?: (pack: string) => Promise<{ ok: boolean; pack?: string; error?: string }>;
+  mockInterviewTts?: (opts: { text: string; sid?: number; speed: number; voiceId?: string; numSteps?: number; engine?: string; onlineVoice?: string }) => Promise<unknown>;
+  mockInterviewTtsStream?: (opts: { text: string; sid?: number; speed: number; voiceId?: string; numSteps?: number; engine?: string; onlineVoice?: string; streamId?: string }) => Promise<unknown>;
+  mockInterviewTtsCancel?: (streamId: string) => Promise<{ ok: boolean; error?: string }>;
+  onMockInterviewTtsChunk?: (callback: (chunk: unknown) => void) => () => void;
+  mockInterviewTtsPreview?: (opts: { sid?: number; speed?: number; voiceId?: string; engine?: string; onlineVoice?: string }) => Promise<unknown>;
+  mockInterviewTtsClearCache?: () => Promise<{ ok: boolean; freedBytes?: number; error?: string }>;
+  mockInterviewAsr?: (opts: unknown) => Promise<unknown>;
+  mockInterviewAsrWarmup?: () => Promise<unknown>;
+  // 克隆音色（P4-B）
+  mockInterviewVoiceList?: () => Promise<unknown>;
+  mockInterviewVoiceCreate?: (payload: unknown) => Promise<unknown>;
+  mockInterviewVoicePackPick?: () => Promise<unknown>;
+  mockInterviewVoicePackPreview?: (dir: string, sid?: number) => Promise<unknown>;
+  mockInterviewVoiceImport?: (dir: string, opts?: unknown) => Promise<unknown>;
+  mockInterviewVoiceRename?: (id: string, name: string) => Promise<unknown>;
+  mockInterviewVoiceRemove?: (id: string) => Promise<unknown>;
+  mockInterviewVoiceUsage?: () => Promise<unknown>;
+  mockInterviewVoiceClear?: () => Promise<unknown>;
+  onMockInterviewSpeechProgress?: (callback: (progress: unknown) => void) => () => void;
+}
+
+interface Window {
+  electron?: ElectronBridgeApi;
+}
+
+// 让 TS 识别 <webview> 自定义元素（React 不知道该标签）
+declare namespace React {
+  namespace JSX {
+    interface IntrinsicElements {
+      webview: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+        src?: string;
+        preload?: string;
+        partition?: string;
+        useragent?: string;
+        nodeintegration?: boolean;
+        webpreferences?: string;
+        allowpopups?: boolean;
+      };
+    }
+  }
+}
