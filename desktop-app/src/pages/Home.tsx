@@ -19,7 +19,7 @@ import {
   BarChartOutlined,
   RocketOutlined,
   RobotOutlined,
-  MessageOutlined,
+  BellOutlined,
   CheckCircleFilled,
   RightOutlined,
   HomeOutlined,
@@ -80,7 +80,7 @@ const QUICK_ENTRIES = [
   { key: 'workbench', icon: <ThunderboltOutlined />, title: '打开工作台', desc: '浏览器为主，中栏看进度与岗位' },
   { key: 'tasks', icon: <ProfileOutlined />, title: '任务进度', desc: '查看任务与岗位记录，失败恢复' },
   { key: 'assistant', icon: <RobotOutlined />, title: '定制简历', desc: '针对岗位 AI 定制 / 导出 PDF' },
-  { key: 'autochat', icon: <MessageOutlined />, title: '自动沟通', desc: '批量自动投递 / 智能打招呼' },
+  { key: 'autochat', icon: <BellOutlined />, title: '消息预警', desc: 'HR 待回复提醒 / AI 回复草稿' },
   { key: 'settings', icon: <SettingOutlined />, title: '设置', desc: '主题 / LLM / 数据管理' },
 ];
 
@@ -480,7 +480,7 @@ export default function Home() {
             strokeColor={{ from: '#14B8A6', to: '#0D9488' }}
           />
           <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
-            已按真人作息分时段投递（默认 8:00–23:00 带每日抖动），非活跃时段自动暂停 —— 可在「自动沟通 → 防封号节奏」调整或关闭。
+            已按真人作息分时段投递（默认 8:00–23:00 带每日抖动），非活跃时段自动暂停 —— 可在「设置 → 常规与外观 → 防封号节奏限制」调整或关闭。
           </Text>
         </div>
       </div>

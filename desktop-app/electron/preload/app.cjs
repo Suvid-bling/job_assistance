@@ -12,6 +12,8 @@ const { pathToFileURL } = require('node:url');
 const ALLOWED_IPC_CHANNELS = new Set([
   'jc:app-info', 'jc:autostart-get', 'jc:autostart-set',
   'jc:backup-delete', 'jc:backup-dir-get', 'jc:backup-dir-pick', 'jc:backup-dir-set', 'jc:backup-read', 'jc:backup-write',
+  'jc:boss-alert-cookie-clear', 'jc:boss-alert-cookie-set', 'jc:boss-alert-cookie-status',
+  'jc:boss-alert-count', 'jc:boss-alert-history', 'jc:boss-alert-scan',
   'jc:boss-login', 'jc:boss-logout', 'jc:bridge-control', 'jc:bridge-token',
   'jc:camoufox-call', 'jc:camoufox-restart', 'jc:camoufox-status', 'jc:camoufox-stop', 'jc:clipboard-write',
   'jc:cloak-binary', 'jc:cloak-event', 'jc:cloak-health', 'jc:cloak-page-back', 'jc:cloak-page-close',
@@ -86,6 +88,17 @@ const api = {
   // 系统通知 / 托盘常驻（设置页开关；主进程按同一份偏好再拦截一次）
   notify: (payload) => ipcRenderer.invoke('jc:notify', payload || {}),
   setTrayPrefs: (prefs) => ipcRenderer.send('jc:tray-prefs-set', prefs || {}),
+
+  // 消息预警（只读）：wt2 只经此提交给主进程加密保存，之后不会回传到渲染层
+  bossAlertCookieSet: (raw) => ipcRenderer.invoke('jc:boss-alert-cookie-set', String(raw ?? '')),
+  bossAlertCookieClear: () => ipcRenderer.invoke('jc:boss-alert-cookie-clear'),
+  bossAlertCookieStatus: () => ipcRenderer.invoke('jc:boss-alert-cookie-status'),
+  bossAlertScan: () => ipcRenderer.invoke('jc:boss-alert-scan'),
+  bossAlertHistory: (bossId, securityId, n) => ipcRenderer.invoke('jc:boss-alert-history', bossId, securityId, n),
+  // 待回复数 + 是否有新增 → 托盘闪烁 / tooltip
+  bossAlertCount: (payload) => ipcRenderer.invoke('jc:boss-alert-count', payload || {}),
+  // 复制到剪贴板（渲染进程 navigator.clipboard 在 file:// 下不可靠）
+  clipboardWrite: (text) => ipcRenderer.invoke('jc:clipboard-write', String(text ?? '')),
 
   // 窗口置顶（标题栏图钉按钮）：查询状态 / 设置 / 订阅变化
   winAlwaysOnTop: () => ipcRenderer.invoke('jc:window-always-on-top'),

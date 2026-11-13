@@ -56,7 +56,6 @@ import { resolveCityCode, loadBossCityCodes } from '@/lib/bossclaw/searchUrl';
 import { camoufoxSearch, camoufoxSend, camoufoxStatus, isCamoufoxStopCode, isCamoufoxEnvCode, resolveCollectPace, type CamoufoxJob } from '@/lib/bossclaw/camoufox';
 import { claimDelivery, isDeliveryClaimed, releaseDelivery } from '@/lib/bossclaw/deliveryLock';
 import type { JobMeta, PendingItem, TaskRun, TaskStage } from '@/lib/bossclaw/types';
-import { useAutoChatStore } from '@/store/useAutoChatStore';
 import { createAnalysisQueue, type AnalysisQueueStats } from '@/lib/bossclaw/analysisQueue';
 
 const { Text } = Typography;
@@ -2059,7 +2058,7 @@ export default function Workbench() {
       return;
     }
     if (!claimDelivery(candidate.id, pf)) {
-      addLog('warn', `岗位正由后台「自动沟通」投递，工作台已跳过：${candidate.job?.title || '岗位'}`);
+      addLog('warn', `岗位正被另一条投递流程占用，工作台已跳过：${candidate.job?.title || '岗位'}`);
       // 不降级状态：该岗位是 approved_queue（「投递中」），只是本轮投递权被后台占用。
       // 历史 bug：此处曾写 status:'approved' 把它打回「待投递」，造成状态机倒流
       // （approved_queue → approved）——用户看到的就是「按钮从已批准状态撤回」。
@@ -2124,10 +2123,10 @@ export default function Workbench() {
       return;
     }
     if (res.stage === 'continue_chat') {
-      // 「继续沟通」入口：已建立会话（此前已投递/已沟通过）。招呼语发送移交「自动沟通」队列
-      // （status=opened，AutoChat 接管），并从工作台投递队列移除（防重复打扰同一 HR）。
-      updatePending(candidate.id, { status: 'opened', error: '' });
-      addLog('warn', `${nTitle}：检测到「继续沟通」（已建立会话），已移入自动沟通队列`);
+      // 「继续沟通」入口：已建立会话（此前已投递/已沟通过）。不再发送招呼语
+      // （status=skipped，后续由消息预警提醒），并从工作台投递队列移除（防重复打扰同一 HR）。
+      updatePending(candidate.id, { status: 'skipped', error: '已建立会话，HR 回复将由「消息预警」提醒' });
+      addLog('warn', `${nTitle}：检测到「继续沟通」（已建立会话），已标记跳过（HR 回复将由「消息预警」提醒）`);
       if (res.tabId) webviewApi.current?.closeTab(res.tabId);
       setApplyStage(null); recomputeStats();
       if (useAppStore.getState().autoAssist) requestRunNext();
@@ -2184,7 +2183,7 @@ export default function Workbench() {
       setApplyStage('send_message');
       // 共享占位锁：若该岗位正被后台「自动沟通」投递，则工作台跳过（交给认领方）
       if (!claimDelivery(candidate.id, pf)) {
-        addLog('warn', `岗位正由后台「自动沟通」投递，工作台已跳过：${candidate.job?.title || '岗位'}`);
+        addLog('warn', `岗位正被另一条投递流程占用，工作台已跳过：${candidate.job?.title || '岗位'}`);
         setApplyStage(null);
         recomputeStats();
         if (useAppStore.getState().autoAssist) requestRunNext();
@@ -2211,10 +2210,10 @@ export default function Workbench() {
       const code = result.code ?? null;
       const msg = result.message || result.error || '投递失败';
       // 「已建立会话」= 该岗位已与 HR 沟通过（继续沟通入口）：不再按新投递判失败，
-      // 移入「自动沟通」队列（status=opened，AutoChat 接管），不占用今日投递名额。
+      // 移入「自动沟通」队列（status=skipped，后续由消息预警提醒），不占用今日投递名额。
       if (/已建立会话|已沟通|继续沟通/.test(msg)) {
-        updatePending(candidate.id, { status: 'opened', error: '已建立会话，移入自动沟通队列' });
-        addLog('warn', `检测到「继续沟通」（已建立会话），已移入自动沟通队列：${candidate.job?.title || '岗位'}`);
+        updatePending(candidate.id, { status: 'skipped', error: '已建立会话，HR 回复将由「消息预警」提醒' });
+        addLog('warn', `检测到「继续沟通」（已建立会话），已标记跳过（HR 回复将由「消息预警」提醒）：${candidate.job?.title || '岗位'}`);
         setApplyStage(null);
         recomputeStats();
         if (useAppStore.getState().autoAssist) requestRunNext();
@@ -2263,7 +2262,7 @@ export default function Workbench() {
 
     // 共享占位锁：与后台「自动沟通」互斥，避免对同一岗位重复投递
     if (!claimDelivery(candidate.id, pf)) {
-      addLog('warn', `岗位正由后台「自动沟通」投递，工作台已跳过：${candidate.job?.title || '岗位'}`);
+      addLog('warn', `岗位正被另一条投递流程占用，工作台已跳过：${candidate.job?.title || '岗位'}`);
       // 同前一处：不把它降级回 approved（approved_queue → approved 是状态机倒流，
       // 界面上表现为「已批准被撤回」）。保持队列态，本轮让给后台即可。
       setApplyStage(null);
@@ -2408,10 +2407,10 @@ export default function Workbench() {
     }
     if (domResult.mode === 'continue_chat') {
       // 「继续沟通」入口：该岗位已与 HR 建立过会话（此前已沟通过/已投递过），
-      // 不再按新投递发招呼语并计成功——移入「自动沟通」队列（status=opened，AutoChat 接管），
+      // 不再按新投递发招呼语并计成功——移入「自动沟通」队列（status=skipped，后续由消息预警提醒），
       // 并从工作台投递队列移除（防重复投递同一 HR、不占用今日投递名额）。
-      updatePending(candidate.id, { status: 'opened', error: '' });
-      addLog('warn', `${domTitle}：检测到「继续沟通」（已建立会话），已移入自动沟通队列`);
+      updatePending(candidate.id, { status: 'skipped', error: '已建立会话，HR 回复将由「消息预警」提醒' });
+      addLog('warn', `${domTitle}：检测到「继续沟通」（已建立会话），已标记跳过（HR 回复将由「消息预警」提醒）`);
       if (activeTabRef.current) { webviewApi.current?.closeTab(activeTabRef.current); activeTabRef.current = null; }
       setApplyStage(null);
       recomputeStats();
@@ -2551,12 +2550,12 @@ export default function Workbench() {
     }
     if (stage === 'continue_chat') {
       // 「继续沟通」入口：该岗位已与 HR 建立过会话（此前已沟通过/已投递过），
-      // 不再按新投递发招呼语并计成功——移入「自动沟通」队列（status=opened，AutoChat 接管），
+      // 不再按新投递发招呼语并计成功——移入「自动沟通」队列（status=skipped，后续由消息预警提醒），
       // 并从工作台投递队列移除（防重复投递同一 HR、不占用今日投递名额）。
       if (domWaitRef.current) { domWaitRef.current('continue_chat', {}, tabId); return; }
       if (!activeId) return;
-      updatePending(activeId, { status: 'opened', error: '' });
-      addLog('warn', `${active?.job?.title || '岗位'}：检测到「继续沟通」（已建立会话），已移入自动沟通队列`);
+      updatePending(activeId, { status: 'skipped', error: '已建立会话，HR 回复将由「消息预警」提醒' });
+      addLog('warn', `${active?.job?.title || '岗位'}：检测到「继续沟通」（已建立会话），已标记跳过（HR 回复将由「消息预警」提醒）`);
       setApplyStage(null);
       recomputeStats();
       if (activeTabRef.current) {
@@ -2624,8 +2623,6 @@ export default function Workbench() {
   const currentPhase = applyStage ? stageToPhase(applyStage) : null;
 
   // ===== 侧边栏底部「当前动作」状态（与 StatusBar 的 OpenClaw 连接状态区分开）=====
-  // chatRunning 作为重跑触发器：自动沟通停止后，若工作台仍在运行则恢复工作台文本
-  const chatRunning = useAutoChatStore((s) => s.chatRunning);
   useEffect(() => {
     let action: string | null = null;
     if (cfxCollecting) action = '正在隐身搜集岗位信息';
@@ -2640,7 +2637,7 @@ export default function Workbench() {
     const store = useAppStore.getState();
     if (action) store.setCurrentAction('workbench', action);
     else store.clearCurrentAction('workbench');
-  }, [cfxCollecting, visualCollecting, running, applyStage, activeItem, chatRunning]);
+  }, [cfxCollecting, visualCollecting, running, applyStage, activeItem]);
 
   const deliveryTasks = useMemo(() => {
     const list: { p: PendingItem; stage: TaskStage; label: string; progress: number }[] = [];

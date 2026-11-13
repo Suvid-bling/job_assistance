@@ -30,6 +30,7 @@
     "test:all": "node scripts/test-all.mjs",
     "test:queue-store": "node scripts/queue-store-regression.mjs",
     "test:ipc": "node scripts/ipc-channel-parity.mjs",
+    "test:message-alert": "node scripts/chat-alert-regression.mjs && node scripts/message-alert-cycle-regression.mjs && node scripts/reply-draft-regression.mjs && node scripts/boss-chat-api-regression.mjs && node scripts/alert-flash-regression.mjs",
     "test:theme-vars": "node scripts/theme-vars-regression.mjs",
     "test:context-budget": "node scripts/context-budget-regression.mjs",
     "test:update": "node scripts/update-check-regression.mjs",

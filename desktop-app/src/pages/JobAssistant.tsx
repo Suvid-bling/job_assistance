@@ -609,7 +609,7 @@ export default function JobAssistant() {
   const onSaveCoverLetter = () => {
     if (!tailor?.coverLetter) return;
     setGreetings([tailor.coverLetter, ...(useDataStore.getState().greetings || [])]);
-    message.success('已存入打招呼语列表（可在「自动沟通」中选用）');
+    message.success('已存入打招呼语列表（可在工作台投递时选用）');
   };
 
   const batchReady = batchItems.filter((item) => item.result && batchJobIncluded(item)).length;

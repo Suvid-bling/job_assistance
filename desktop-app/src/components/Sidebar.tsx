@@ -7,7 +7,7 @@ import {
   ProfileOutlined,
   BarChartOutlined,
   ApiOutlined,
-  MessageOutlined,
+  BellOutlined,
   RobotOutlined,
   SettingOutlined,
   ScheduleOutlined,
@@ -22,7 +22,7 @@ import { NAV_ITEMS, useAppStore, RouteKey } from '../store/useAppStore';
  * 导航图标表：与 NAV_ITEMS 的 key 一一对应（store/useAppStore.ts，图标→模块的权威映射）
  * 中文名速查：home(首页)/workbench(工作台)/resume(简历中心)/directions(投递方向)/
  *   tasks(任务进度)/schedule(定时任务)/stats(数据统计)/assistant(定制简历)/
- *   mockInterview(模拟面试)/openclaw(OpenClaw)/autochat(自动沟通)/settings(设置)
+ *   mockInterview(模拟面试)/openclaw(OpenClaw)/autochat(消息预警)/settings(设置)
  * 维护定位：新增 / 增删导航模块时同步此表 + NAV_ITEMS + App.tsx 渲染分支。
  */
 const NAV_ICONS: Record<RouteKey, React.ReactNode> = {
@@ -34,7 +34,7 @@ const NAV_ICONS: Record<RouteKey, React.ReactNode> = {
   schedule: <ScheduleOutlined />,
   stats: <BarChartOutlined />,
   openclaw: <ApiOutlined />,
-  autochat: <MessageOutlined />,
+  autochat: <BellOutlined />,
   assistant: <RobotOutlined />,
   mockInterview: <SolutionOutlined />,
   settings: <SettingOutlined />,

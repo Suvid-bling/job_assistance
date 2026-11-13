@@ -42,6 +42,8 @@ export const STORAGE_KEYS: StorageKeySpec[] = [
   // 运行时日志（P2-05）：从 bossclaw-data 拆出的独立小键。日志为运行时产物、重启即重新累积，
   // 不导出不备份；「清空全部数据/恢复出厂」时随业务数据一并清除
   { key: 'bossclaw-runtime-logs', export: false, backup: false, clear: true },
+  // 消息预警：待回复卡片 / 已处理 msgId。含 HR 姓名与聊天原文 → 不导出不备份，清空数据时随之删除
+  { key: 'bossclaw-message-alert', export: false, backup: false, clear: true },
   // 岗位队列（issue #10）：虚拟键 —— 文件模式下数据实际位于 <userData>/queue/queue-store.json，
   // 不在 localStorage 里。登记在这里是为了让导出/备份/清空三处共用同一份清单，
   // 具体读写由 lib/bossclaw/queueRepo.ts 接管（见下方各函数的 SPECIAL 分支）。

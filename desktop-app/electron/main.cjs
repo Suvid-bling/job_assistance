@@ -4,7 +4,7 @@
 // CloakBrowser 隐身引擎作为**可选**内置浏览器（用户设置切换；与 webview 平行运行）。
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, Menu, session, clipboard, dialog, nativeImage, Tray, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, session, clipboard, dialog, nativeImage, Tray, Notification, safeStorage } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -20,6 +20,10 @@ const mockInterviewRepo = require('./mockInterviewRepo.cjs');
 const mockInterviewBankRepo = require('./mockInterviewBankRepo.cjs');
 // 岗位队列文件仓储（issue #10：把 pending / qualifiedExports 从 localStorage 迁到 <userData>/queue/）
 const queueStore = require('./queueStore.cjs');
+// 消息预警：BOSS 会话只读 API（wt2 经 safeStorage 加密，内存分区发请求）+ 托盘闪烁控制器
+const { createBossChatApi, registerBossAlertIpc, PARTITION: BOSS_ALERT_PARTITION } = require('./bossChatApi.cjs');
+const { createAlertFlash } = require('./alertFlash.cjs');
+
 // 语音运行时（utilityProcess 宿主 + 模型安装）；仅在模拟面试朗读时懒加载，不影响启动
 const speechInstall = require('./speechInstall.cjs');
 const speechService = require('./speechService.cjs');
@@ -842,7 +846,7 @@ safeHandle('jc:camoufox-call', async (_event, action, payload) => {
     const r = await startCamoufoxBridge(readyPython);
     if (!r.running) return { ok: false, error: r.error || '桥启动失败' };
   }
-  const pathMap = { search: '/search', send: '/send', chat: '/chat', chatWatch: '/chat-watch', login: '/login', logout: '/logout', clear: '/clear', platforms: '/platforms', progress: '/collection-progress' };
+  const pathMap = { search: '/search', send: '/send', login: '/login', logout: '/logout', clear: '/clear', platforms: '/platforms', progress: '/collection-progress' };
   const apiPath = pathMap[action];
   if (!apiPath) return { ok: false, error: `unknown action: ${action}` };
   // 超时：搜索耗时随「页数 × 采集速度倍率」线性增长（慢速 3× 翻 10 页远超固定 240s），
@@ -1459,6 +1463,9 @@ async function createMainWindow() {
     }
   });
   mainWindow.on('closed', () => { mainWindow = null; });
+  // 消息预警：用户打开 / 聚焦窗口 = 已看到提示 → 停止托盘闪烁
+  mainWindow.on('focus', () => alertFlash.acknowledge());
+  mainWindow.on('show', () => alertFlash.acknowledge());
 
   // ===== P30：渲染进程崩溃自愈 + 无响应检测 =====
   // 背景：网络卡顿/大对象序列化可能导致渲染进程崩溃（render-process-gone）或主线程无响应
@@ -2656,6 +2663,27 @@ ipcMain.on('jc:tray-prefs-set', (_event, prefs) => {
   if (trayPrefs.closeToTray) createTray();
   else destroyTray();
 });
+// ===== 消息预警 =====
+// 分区名无 persist: 前缀 → cookie jar 仅内存；wt2 只在主进程（加密文件 + 内存），不进渲染层。
+const bossAlertApi = createBossChatApi({
+  safeStorage,
+  getSession: () => session.fromPartition(BOSS_ALERT_PARTITION),
+  stealth,
+  userDataDir: app.getPath('userData'),
+  log: (level, msg, extra) => dlog(level, msg, extra),
+});
+registerBossAlertIpc(safeHandle, bossAlertApi);
+
+// 托盘闪烁：待回复出现新增 → 闪；用户聚焦 / 显示主窗口（见 createMainWindow）→ 停。
+const alertFlash = createAlertFlash({
+  getTray: () => tray,
+  getWindow: () => mainWindow,
+  normalImage: APP_ICON.isEmpty() ? nativeImage.createFromPath(APP_ICON_ICO) : APP_ICON,
+  blankImage: nativeImage.createEmpty(),
+  tooltipBase: 'BossClaw · 后台运行中',
+});
+safeHandle('jc:boss-alert-count', (_event, payload) => alertFlash.update(payload));
+
 // 渲染层主动发通知（首次投递验收 / 风控暂停 / 定时任务完成）。
 // 主进程侧再校验一次 notify：偏好推送有延迟（设置页刚关就触发通知时不能漏拦）。
 ipcMain.handle('jc:notify', (_event, payload) => {

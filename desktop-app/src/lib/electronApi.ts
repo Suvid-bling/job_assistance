@@ -9,6 +9,7 @@
 
 import type { MockIndexEntry, MockSession } from './bossclaw/mockInterviewTypes';
 import type { QueueFilePayload } from './bossclaw/queueTypes';
+import type { AlertFriend, AlertMessage } from './bossclaw/chatAlert';
 import type { BankMeta, BankQuestion } from './bossclaw/mockInterviewBank';
 import type {
   AsrResult,
@@ -172,6 +173,31 @@ export const electronApi = {
     }
   },
 
+  // 消息预警（只读）：主进程负责 wt2 加密存储与 BOSS 请求，渲染层拿不到 cookie
+  bossAlert: {
+    available: (): boolean => Boolean(api().bossAlertScan),
+    cookieSet: async (raw: string) =>
+      (await api().bossAlertCookieSet?.(raw)) ?? ({ ok: false, message: '消息预警接口不可用（仅桌面版）' } as BossAlertResult),
+    cookieClear: async () => (await api().bossAlertCookieClear?.()) ?? { ok: false },
+    cookieStatus: async () => (await api().bossAlertCookieStatus?.()) ?? null,
+    scan: async (): Promise<BossAlertResult & { friends?: AlertFriend[]; myUid?: number | string | null }> =>
+      (await api().bossAlertScan?.()) ?? { ok: false, message: '消息预警接口不可用（仅桌面版）' },
+    history: async (bossId: string, securityId: string, n?: number): Promise<BossAlertResult & { messages?: AlertMessage[]; hasMore?: boolean }> =>
+      (await api().bossAlertHistory?.(bossId, securityId, n)) ?? { ok: false, message: '消息预警接口不可用（仅桌面版）' },
+    setCount: async (count: number, fresh: boolean) => {
+      try { return (await api().bossAlertCount?.({ count, fresh })) ?? { ok: false }; } catch { return { ok: false }; }
+    },
+  },
+
+  // 复制到剪贴板（主进程写入；file:// 下 navigator.clipboard 不可靠）
+  copyText: async (text: string): Promise<boolean> => {
+    try {
+      const r = await api().clipboardWrite?.(text);
+      if (r?.ok) return true;
+    } catch { /* 回落 */ }
+    try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
+  },
+
   fetchUrl: async (url: string): Promise<{ ok: boolean; status?: number; text?: string; error?: string }> => {
     try {
       const fn = (api() as { fetchUrl?: (u: string) => Promise<{ ok: boolean; status?: number; text?: string; error?: string }> }).fetchUrl;
@@ -193,7 +219,7 @@ export const electronApi = {
         return { ready: false, running: false, message: '状态探测失败' };
       }
     },
-    call: async (action: 'search' | 'send' | 'chat' | 'login' | 'logout' | 'clear', payload?: Record<string, unknown>) => {
+    call: async (action: 'search' | 'send' | 'login' | 'logout' | 'clear', payload?: Record<string, unknown>) => {
       const fn = api().camoufoxCall;
       if (!fn) return { ok: false, error: 'camoufox API 不可用' };
       try {

@@ -50,7 +50,7 @@ export interface PendingMockInterview {
  *   assistant(定制简历) → JobAssistant → src/pages/JobAssistant.tsx
  *   mockInterview(模拟面试) → MockInterview → src/pages/MockInterview.tsx
  *   openclaw(OpenClaw) → OpenClaw     → src/pages/OpenClaw.tsx
- *   autochat(自动沟通) → AutoChat     → src/pages/AutoChat.tsx
+ *   autochat(消息预警) → MessageAlert → src/pages/MessageAlert.tsx
  *   settings(设置)    → Settings      → src/pages/Settings.tsx
  * ⚠️ 顺序即展示顺序；新增模块需同步：RouteKey 类型 + NAV_ITEMS + 图标 + App.tsx 渲染分支。
  */
@@ -65,14 +65,14 @@ export const NAV_ITEMS: NavItem[] = [
   { key: 'assistant', label: '定制简历' },
   { key: 'mockInterview', label: '模拟面试' },
   { key: 'openclaw', label: 'OpenClaw' },
-  { key: 'autochat', label: '自动沟通' },
+  { key: 'autochat', label: '消息预警' },
   { key: 'settings', label: '设置' },
 ];
 
 export type EngineStatus = 'running' | 'stopped' | 'disconnected';
 
 /**
- * 侧边栏「当前动作」多源协调优先级：自动沟通(2) > 工作台投递/采集(1)。
+ * 侧边栏「当前动作」多源协调优先级：消息预警(2) > 工作台投递/采集(1)。
  * 低优先级源不覆盖高优先级源（避免两者并存时互相闪烁）；
  * 高优先级源停止后由对方通过订阅自己的信号作为重跑触发来恢复文本。
  */

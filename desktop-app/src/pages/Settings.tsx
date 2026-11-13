@@ -65,6 +65,7 @@ import {
   ArrowDownOutlined,
   SwapOutlined,
 } from '@ant-design/icons';
+import SafetyLimitsCard from '@/components/SafetyLimitsCard';
 import { useSettingsStore, PROVIDER_DEFAULTS } from '@/store/useSettingsStore';
 import { useAppStore, ThemeMode } from '@/store/useAppStore';
 import type { SettingsTabKey } from '@/store/useAppStore';
@@ -890,6 +891,7 @@ export default function Settings({ isVisible = true }: { isVisible?: boolean }) 
             </Paragraph>
           </div>
 
+          <SafetyLimitsCard />
 
           <div className="settings-section-card">
             <div className="settings-section-header">
@@ -997,12 +999,12 @@ export default function Settings({ isVisible = true }: { isVisible?: boolean }) 
             <Paragraph type="secondary" style={{ marginTop: 6, marginBottom: 0, fontSize: 13 }}>
               启用后在「工作台」搜索栏可选平台，且内置浏览器新建标签页可选对应平台首页；各平台独立在工作台
               内置浏览器扫码/账号登录，登录态由 Electron 持久化会话自动保存，投递动作按平台语义适配。
-              <b>BOSS 直聘与其余平台一样支持自主勾选</b>：取消勾选后该平台不再参与搜索采集与自动沟通，
+              <b>BOSS 直聘与其余平台一样支持自主勾选</b>：取消勾选后该平台不再参与搜索采集与一键投递，
               已采集岗位仍保留在队列中，重新勾选后继续处理。
             </Paragraph>
             <div style={{ marginTop: 6, padding: '8px 12px', background: 'var(--hover-bg)', borderRadius: 8, fontSize: 13, color: 'var(--fg-muted)' }}>
               平台优先级（<ArrowUpOutlined style={{ fontSize: 11 }} /> <ArrowDownOutlined style={{ fontSize: 11 }} /> 调整，数字 1 = 最高优先）：
-              决定「工作台搜索栏」的平台顺序，以及多平台任务执行顺序 —— 自动沟通会<b>先完成优先级较高平台的全部
+              决定「工作台搜索栏」的平台顺序，以及多平台任务执行顺序 —— 投递会<b>先完成优先级较高平台的全部
               已确认任务，再切换下一优先级平台</b>（同级不重复，交换式调整）。
             </div>
             <div style={{ marginTop: 10 }}>

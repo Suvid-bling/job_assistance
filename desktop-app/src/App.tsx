@@ -8,15 +8,14 @@ import { clearAllData } from './lib/storage';
 import { ensureSkillsLoaded } from './lib/bossclaw/skills';
 import { useInterval } from './lib/hooks';
 import { startScheduler } from './lib/scheduler';
-import { useScheduleStore } from './store/useScheduleStore';
-import { consumeLegacyBatchDelivery, useSettingsStore } from './store/useSettingsStore';
+import { useSettingsStore } from './store/useSettingsStore';
 import { restoreFromLocalBackup, startLocalBackup } from './lib/localBackup';
 import { syncTargetLocationsOnStart } from './lib/bossclaw/targetLocationSync';
 import Sidebar from './components/Sidebar';
 import StatusBar from './components/StatusBar';
 import TitleBar from './components/TitleBar';
 import { ErrorBoundary, SkeletonCard } from './components/feedback';
-import { useAutoChatStore } from './store/useAutoChatStore';
+import { useMessageAlertStore } from './store/useMessageAlertStore';
 
 // 数据版本号：与主进程 main.cjs 的 DATA_VERSION 对齐，v3 重建后首次启动清空旧数据
 const DATA_VERSION = 'v3-rebuild-20260815';
@@ -30,7 +29,7 @@ const Tasks = lazy(() => import('./pages/Tasks'));
 const ScheduleTasks = lazy(() => import('./pages/ScheduleTasks'));
 const Stats = lazy(() => import('./pages/Stats'));
 const OpenClaw = lazy(() => import('./pages/OpenClaw'));
-const AutoChat = lazy(() => import('./pages/AutoChat'));
+const MessageAlert = lazy(() => import('./pages/MessageAlert'));
 const JobAssistant = lazy(() => import('./pages/JobAssistant'));
 const MockInterview = lazy(() => import('./pages/MockInterview'));
 const Settings = lazy(() => import('./pages/Settings'));
@@ -53,7 +52,7 @@ const PRELOAD_PAGES: Array<() => Promise<unknown>> = [
   () => import('./pages/ScheduleTasks'),
   () => import('./pages/Stats'),
   () => import('./pages/OpenClaw'),
-  () => import('./pages/AutoChat'),
+  () => import('./pages/MessageAlert'),
   () => import('./pages/JobAssistant'),
   () => import('./pages/MockInterview'),
   () => import('./pages/Settings'),
@@ -197,34 +196,9 @@ export default function App() {
     return () => stopBackup();
   }, []);
 
-  // 启动全局定时任务调度器（应用运行期间按设定时刻触发投递/采集/备份）
+  // 启动全局定时任务调度器（应用运行期间按设定时刻触发采集/备份）
   useEffect(() => {
     startScheduler();
-  }, []);
-
-  // 一次性迁移（2026-09-09）：老用户 config.batchDelivery（早中晚分批）已退役，
-  // 若曾开启，则按其时刻与配额生成 3 条「限量定时投递」任务；幂等：仅当不存在同名任务时生成。
-  useEffect(() => {
-    const legacy = consumeLegacyBatchDelivery();
-    if (!legacy || legacy.enabled !== true) return;
-    const sched = useScheduleStore.getState();
-    const templateNames = ['早间限量投递', '午间限量投递', '晚间限量投递'];
-    if (sched.entries.some((e) => e.action === 'deliver' && templateNames.includes(e.name))) return;
-    const count = (slot: 'morning' | 'noon' | 'evening') => Math.max(0, Number(legacy.counts?.[slot]) || 0);
-    const mk = (name: string, time: string, slot: 'morning' | 'noon' | 'evening') => {
-      sched.addEntry({
-        name,
-        action: 'deliver',
-        time,
-        daysOfWeek: [],
-        enabled: true,
-        platforms: [],
-        limitPerRun: count(slot),
-      });
-    };
-    mk('早间限量投递', legacy.morningTime || '09:00', 'morning');
-    mk('午间限量投递', legacy.noonTime || '13:00', 'noon');
-    mk('晚间限量投递', legacy.eveningTime || '18:00', 'evening');
   }, []);
 
   const isWorkbench = activeRoute === 'workbench';
@@ -281,7 +255,7 @@ export default function App() {
                           home(首页)→Home / resume(简历中心)→Resume /
                           directions(投递方向)→Directions / tasks(任务进度)→Tasks /
                           schedule(定时任务)→ScheduleTasks / stats(数据统计)→Stats /
-                          openclaw(OpenClaw)→OpenClaw / autochat(自动沟通)→AutoChat /
+                          openclaw(OpenClaw)→OpenClaw / autochat(消息预警)→MessageAlert /
                           assistant(定制简历)→JobAssistant / mockInterview(模拟面试)→MockInterview /
                           settings(设置)→Settings；
                           workbench(工作台) 在「工作台常驻宿主」处单独挂载。新增模块需同步此处分支。 */}
@@ -292,7 +266,7 @@ export default function App() {
                       {key === 'schedule' && <ScheduleTasks />}
                       {key === 'stats' && <Stats />}
                       {key === 'openclaw' && <OpenClaw />}
-                      {key === 'autochat' && <AutoChat />}
+                      {key === 'autochat' && <MessageAlert />}
                       {key === 'assistant' && <JobAssistant />}
                       {key === 'mockInterview' && <MockInterview isVisible={activeRoute === 'mockInterview'} />}
                       {key === 'settings' && <Settings isVisible={activeRoute === 'settings'} />}
@@ -305,23 +279,20 @@ export default function App() {
         </main>
       </div>
       <StatusBar />
-      {/* 侧边栏「当前动作」协调器：自动沟通后台常驻运行（AutoChat 页切走会卸载），
-          由本组件统一上报「正在自动沟通」，优先级高于工作台投递/采集源 */}
-      <ActionReporter />
+      <AlertResumer />
     </div>
   );
 }
 
-/** 常驻协调侧边栏底部「当前动作」：后台自动沟通运行时上报，停止时清除。
- * 订阅 autoAssist 作为重跑触发器——工作台停止后若自动沟通仍在跑则恢复其文本。 */
-function ActionReporter() {
-  const chatRunning = useAutoChatStore((s) => s.chatRunning);
-  const autoAssist = useAppStore((s) => s.autoAssist);
+/** 消息预警常驻恢复：上次开启过则启动后自动继续只读扫描，并把「正在扫描」上报到侧栏当前动作。 */
+function AlertResumer() {
+  const scanning = useMessageAlertStore((s) => s.scanning);
   const setCurrentAction = useAppStore((s) => s.setCurrentAction);
   const clearCurrentAction = useAppStore((s) => s.clearCurrentAction);
+  useEffect(() => { useMessageAlertStore.getState().resume(); }, []);
   useEffect(() => {
-    if (chatRunning) setCurrentAction('autochat', '正在自动沟通');
+    if (scanning) setCurrentAction('autochat', '正在扫描消息预警');
     else clearCurrentAction('autochat');
-  }, [chatRunning, autoAssist, setCurrentAction, clearCurrentAction]);
+  }, [scanning, setCurrentAction, clearCurrentAction]);
   return null;
 }

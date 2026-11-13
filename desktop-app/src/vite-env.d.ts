@@ -1,5 +1,14 @@
 /// <reference types="vite/client" />
 
+/** 消息预警主进程接口的通用返回：code 7 = 登录失效；risk = 命中风控（须停止，不重试） */
+interface BossAlertResult {
+  ok: boolean;
+  code?: number;
+  message?: string;
+  expired?: boolean;
+  risk?: boolean;
+}
+
 // 主窗口 preload 暴露的安全接口（electron/preload/app.cjs）
 interface ElectronBridgeApi {
   versions?: { electron?: string; chrome?: string; node?: string };
@@ -28,6 +37,14 @@ interface ElectronBridgeApi {
   // 系统通知 / 托盘常驻（设置页开关；主进程按同一份偏好再拦截一次）
   notify?: (payload: { title?: string; body?: string }) => Promise<{ ok: boolean; skipped?: string; error?: string }>;
   setTrayPrefs?: (prefs: { closeToTray?: boolean; notify?: boolean }) => void;
+  // 消息预警（只读 BOSS 会话 API；wt2 仅在主进程加密保存）
+  bossAlertCookieSet?: (raw: string) => Promise<BossAlertResult & { uid?: number | string; name?: string; expiresAt?: number | null }>;
+  bossAlertCookieClear?: () => Promise<{ ok: boolean }>;
+  bossAlertCookieStatus?: () => Promise<{ ok: boolean; hasCookie: boolean; expired: boolean; expiresAt: number | null; uid: number | string | null; name: string; encryptionAvailable: boolean }>;
+  bossAlertScan?: () => Promise<BossAlertResult & { friends?: import('./lib/bossclaw/chatAlert').AlertFriend[]; myUid?: number | string | null }>;
+  bossAlertHistory?: (bossId: string, securityId: string, n?: number) => Promise<BossAlertResult & { messages?: import('./lib/bossclaw/chatAlert').AlertMessage[]; hasMore?: boolean }>;
+  bossAlertCount?: (payload: { count: number; fresh?: boolean }) => Promise<{ ok: boolean; flashing?: boolean }>;
+  clipboardWrite?: (text: string) => Promise<{ ok: boolean; error?: string }>;
   // Camoufox 隐身引擎（可选增强，Python 桥）——platform 参数（boss/liepin/zhaopin/job51）
   camoufoxStatus?: (platform?: string) => Promise<{ python: boolean; pythonCmd?: string | null; camoufox: boolean; running: boolean; ready: boolean; message?: string; engine?: unknown }>;  camoufoxCall?: (action: string, payload?: Record<string, unknown>) => Promise<any>;
   camoufoxStop?: () => void;

@@ -12,12 +12,13 @@ import { useSettingsStore } from '@/store/useSettingsStore';
 import { useDataStore } from '@/store/useDataStore';
 import { useRuntimeLogsStore } from '@/store/useRuntimeLogsStore';
 import { useScheduleStore } from '@/store/useScheduleStore';
-import { useAutoChatStore } from '@/store/useAutoChatStore';
+import { useMessageAlertStore } from '@/store/useMessageAlertStore';
+import { pendingCount } from '@/lib/bossclaw/alertCycle';
 import { writeLocalBackup, restoreFromLocalBackup } from '@/lib/localBackup';
 import { electronApi } from '@/lib/electronApi';
-import { PLATFORM_IDS, platformEnabled, type JobPlatform } from '@/lib/bossclaw/platforms';
+import { PLATFORM_IDS, type JobPlatform } from '@/lib/bossclaw/platforms';
 import { isWhitelistedUrl, whitelistHostOf } from '@/lib/bossclaw/browserWhitelist';
-import { SAFETY_LIMITS, isLockedOut, effectiveDailyCap, enabledSentCount, cooldownRemaining } from '@/lib/bossclaw/safety';
+import { SAFETY_LIMITS } from '@/lib/bossclaw/safety';
 import { analyzeJob } from '@/lib/bossclaw/matching';
 import { tailorForJob } from '@/lib/bossclaw/jobAssistant';
 import { buildProfile } from '@/lib/bossclaw/profile';
@@ -36,7 +37,6 @@ import {
 } from '@/lib/bossclaw/agentAnswer';
 import { rerankPending, promoteApprovedToQueue } from '@/lib/bossclaw/priority';
 import { TASK_STAGE_META, TERMINAL_RUN_STATUSES, taskStageMetaFor } from '@/lib/bossclaw/taskState';
-import { isDeliveryClaimed } from '@/lib/bossclaw/deliveryLock';
 import { getBrowser } from '@/lib/browserRegistry';
 import {
   queryInteractive,
@@ -116,7 +116,7 @@ function snapshotState(): Record<string, unknown> {
   const data = useDataStore.getState();
   const rlogs = useRuntimeLogsStore.getState();
   const sched = useScheduleStore.getState();
-  const auto = useAutoChatStore.getState();
+  const alert = useMessageAlertStore.getState();
   const now = Date.now();
   const pausedUntil = Number(cfg.pausedUntil) || 0;
   const profile = data.profile as unknown as { primaryRole?: string; role?: string } | null;
@@ -165,7 +165,7 @@ function snapshotState(): Record<string, unknown> {
       chatLogs: { count: (rlogs.chatLogs || []).length, tail: (rlogs.chatLogs || []).slice(-20) },
     },
     schedule: { entries: sched.entries || [] },
-    autochat: { chatRunning: auto.chatRunning, activeChatId: auto.activeChatId, progress: auto.progress },
+    messageAlert: { enabled: alert.enabled, status: alert.status, scanning: alert.scanning, lastScanAt: alert.lastScanAt, pending: pendingCount(alert.cards) },
     // agent 代答通道状态（只读，不刷新心跳）：online=false 时应用内 AI 无密钥一律走本地规则
     agentAnswer: agentAnswerStats(),
     engine: {
@@ -660,85 +660,13 @@ const handlers: Record<string, Handler> = {
     return { applied: false, message: 'uiWait 需要 ms 或 selector' };
   },
 
-  // ===== B. 自动沟通引擎接管 =====
-  autochatStart: ({ platforms, maxCount }) => {
-    const auto = useAutoChatStore.getState();
-    if (auto.chatRunning) return { applied: false, message: '后台沟通已在运行' };
-    const cfg = useSettingsStore.getState().config;
-    // 安全护栏（审查 C-1）：自动沟通经 camoufoxChat 真实发送招呼语，与 deliverySendNow 同等副作用，
-    // 必须同样以「用户已开启全自动」为前置条件；否则 agent 可改调本动作实现真实批量发送，
-    // 使 deliverySendNow 的 executionMode 护栏被自证绕过。executionMode 只能由用户在设置页切换。
-    if (cfg.executionMode !== 'auto') {
-      return { applied: false, message: '全自动未开启（executionMode 为 review），自动沟通（真实发送招呼语）已被拒绝；请由用户在应用内开启全自动，或使用 deliveryDraft 草拟后由用户发送' };
-    }
-    if (isLockedOut(cfg)) return { applied: false, message: `冷却期内不可启动（剩余约 ${Math.ceil(cooldownRemaining(cfg) / 60000)} 分钟）` };
-    auto.start({
-      platforms: Array.isArray(platforms) ? (platforms.map(String) as JobPlatform[]) : undefined,
-      maxCount: maxCount != null ? Number(maxCount) : undefined,
-    });
-    return { applied: true, message: '后台自动沟通已启动（持续处理队列，切页仍运行）', next: { chatRunning: true } };
-  },
-
-  autochatStop: () => {
-    useAutoChatStore.getState().stop();
-    return { applied: true, message: '已停止后台沟通', next: { chatRunning: false } };
-  },
-
-  autochatStep: ({ id }) => {
-    const auto = useAutoChatStore.getState();
-    if (auto.chatRunning) return { applied: false, message: '后台沟通运行中，请先 autochatStop 再单步' };
-    const cfg = useSettingsStore.getState().config;
-    const data = useDataStore.getState();
-    // 安全护栏（审查 C-1）：单步沟通同样会真实发送招呼语，与 autochatStart 同源，须校验全自动。
-    if (cfg.executionMode !== 'auto') {
-      return { applied: false, message: '全自动未开启（executionMode 为 review），单步沟通（真实发送招呼语）已被拒绝；请由用户在应用内开启全自动，或使用 deliveryDraft 草拟后由用户发送' };
-    }
-    if (isLockedOut(cfg)) return { applied: false, message: `冷却期内不可投递（剩余约 ${Math.ceil(cooldownRemaining(cfg) / 60000)} 分钟）` };
-    // 审查 #23 后续 · 批次 13：账号级「已用」必须与额度（effectiveDailyCap，只累加**已启用**平台）
-    // 同源 —— 用 enabledSentCount 而非 dailySentCount（后者含已关闭平台的历史投递，会把账号误判为已满）。
-    if (enabledSentCount(cfg, data.pending) >= effectiveDailyCap(cfg)) return { applied: false, message: `今日已达上限 ${effectiveDailyCap(cfg)} 条` };
-    let item: PendingItem | undefined;
-    if (id) {
-      item = data.pending.find((p) => p.id === String(id));
-      if (!item) return { applied: false, message: `待沟通岗位不存在：${id}` };
-    } else {
-      item = rerankPending(data.pending, cfg).find(
-        (p) =>
-          (p.status === 'approved' || p.status === 'opened') &&
-          !isDeliveryClaimed(p.id, String(p.job?.platform || 'boss')) &&
-          platformEnabled(cfg, String(p.job?.platform || 'boss') as JobPlatform)
-      );
-    }
-    if (!item) return { applied: false, message: '没有可单步沟通的岗位（需 status∈approved/opened 且平台已启用）' };
-    if (!(item.deliveryGreeting || '').trim()) return { applied: false, message: '该岗位招呼语为空，拒绝发送' };
-    auto.chatOne(item);
+  // ===== B. 消息预警（只读状态；开关 / Cookie 只能由用户在应用内操作，不经控制桥）=====
+  alertStatus: () => {
+    const a = useMessageAlertStore.getState();
     return {
       applied: true,
-      message: '已触发单条沟通（结果异步，可轮询 autochatStatus / bossclaw_app_state）',
-      next: { id: item.id, title: item.job?.title, company: item.job?.company, note: '异步' },
-    };
-  },
-
-  autochatStatus: () => {
-    const auto = useAutoChatStore.getState();
-    const cfg = useSettingsStore.getState().config;
-    const data = useDataStore.getState();
-    const nextEligible = rerankPending(data.pending, cfg).find(
-      (p) =>
-        (p.status === 'approved' || p.status === 'opened') &&
-        platformEnabled(cfg, String(p.job?.platform || 'boss') as JobPlatform)
-    );
-    return {
-      applied: true,
-      message: '自动沟通状态',
-      next: {
-        chatRunning: auto.chatRunning,
-        activeChatId: auto.activeChatId,
-        progress: auto.progress,
-        eligibleNext: nextEligible
-          ? { id: nextEligible.id, title: nextEligible.job?.title, company: nextEligible.job?.company }
-          : null,
-      },
+      message: '消息预警状态（只读）',
+      next: { enabled: a.enabled, status: a.status, scanning: a.scanning, lastScanAt: a.lastScanAt, pending: pendingCount(a.cards) },
     };
   },
 

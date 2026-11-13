@@ -126,39 +126,6 @@ export interface CamoufoxSendResult {
   error?: string;
 }
 
-/** 会话内一条消息（AI 跟聊多轮上下文用）：fromHr=true 为 HR 发出，false 为我方发出。 */
-export interface ChatHistoryEntry {
-  fromHr: boolean;
-  text: string;
-}
-
-export interface CamoufoxChatResult {
-  ok: boolean;
-  sent?: boolean;
-  /** 本次是否已点击「发送在线简历」（仅请求了在线简历时回传） */
-  onlineResumeSent?: boolean;
-  code?: number;
-  message?: string;
-  method?: string;
-  sentVia?: string;
-  /** 该岗位为外部网申，无法自动沟通（应标记跳过） */
-  external?: boolean;
-  /** 目标 HR/会话疑似冲突，已暂停发送 */
-  conflict?: boolean;
-  /** HR 已发来消息，需进入「AI 跟聊」回复（code 700） */
-  needsReply?: boolean;
-  /** 已与该 HR 建立会话且无需回复（code 701）：跳过重复打招呼 */
-  alreadyChatted?: boolean;
-  hasHrMessage?: boolean;
-  /** HR 最新一条消息文本（用于生成 AI 回复） */
-  hrLastMessage?: string;
-  /** 双方最近的消息（按时序，早→晚）：mode='check'/'auto' 命中跟聊时回传，供多轮 AI 回复 */
-  hrHistory?: ChatHistoryEntry[];
-  /** 本次为「只读巡检」（mode='check'）：仅读取会话，未发送任何消息 */
-  checked?: boolean;
-  error?: string;
-}
-
 export interface CamoufoxLoginResult {
   ok: boolean;
   loggedIn?: boolean;
@@ -167,78 +134,7 @@ export interface CamoufoxLoginResult {
   error?: string;
 }
 
-export type CamoufoxAction = 'search' | 'send' | 'chat' | 'chatWatch' | 'login' | 'logout' | 'clear' | 'platforms' | 'progress';
-
-// ===== 常驻「AI 跟聊」会话监听（/chat-watch）=====
-// 单一常驻浏览器停在 BOSS 会话页：scan 读会话列表 → open 切会话读聊天记录 → send 回复。
-// 身份校验（getBossData / 窗口头部）与气泡确认都在 Python 侧完成，渲染层只做 AI 决策。
-export type ChatWatchCommand = 'start' | 'scan' | 'open' | 'send' | 'stop' | 'status';
-
-/** 会话列表中的一条会话（scan 返回） */
-export interface ChatWatchConversation {
-  name: string;
-  company?: string;
-  jobName?: string;
-  preview?: string;
-  unread?: boolean;
-  friendId?: string;
-  uid?: string;
-  lastFromId?: string;
-  /** true = 由 DOM 兜底扫描得到（接口不可用） */
-  dom?: boolean;
-}
-
-export interface ChatWatchResult {
-  ok: boolean;
-  code?: number;
-  message?: string;
-  error?: string;
-  /** start：会话页是否就绪 */
-  ready?: boolean;
-  /** status：监听是否运行中 / 当前页面 URL */
-  running?: boolean;
-  url?: string;
-  /** scan：会话列表 */
-  conversations?: ChatWatchConversation[];
-  total?: number;
-  /** open：会话名 / 公司 / 岗位名 / 完整聊天记录 / 是否需要回复 */
-  name?: string;
-  company?: string;
-  jobName?: string;
-  history?: ChatHistoryEntry[];
-  needsReply?: boolean;
-  hrLastMessage?: string;
-  /** open：身份校验依据（api=getBossData / header=窗口头部 / content=聊天内容） */
-  matchedBy?: string;
-  /** send：是否已发送 */
-  sent?: boolean;
-  method?: string;
-  sentVia?: string;
-  /** send：请求了在线简历时回传是否已点击「发送在线简历」 */
-  onlineResumeSent?: boolean;
-}
-
-/** 调用常驻会话监听命令（start / scan / open / send / stop / status）。 */
-export function camoufoxChatWatch(
-  cmd: ChatWatchCommand,
-  payload?: {
-    os?: string; name?: string; company?: string; text?: string;
-    /** send：文字回复确认后再发送在线简历 */
-    sendOnlineResume?: boolean;
-    attachmentDelaySeconds?: number;
-  }
-): Promise<ChatWatchResult> {
-  return camoufoxCall<ChatWatchResult>('chatWatch', {
-    cmd,
-    platform: 'boss',
-    os: payload?.os || undefined,
-    name: payload?.name || '',
-    company: payload?.company || '',
-    text: payload?.text || '',
-    sendOnlineResume: payload?.sendOnlineResume === true || undefined,
-    attachmentDelaySeconds: payload?.attachmentDelaySeconds,
-  });
-}
+export type CamoufoxAction = 'search' | 'send' | 'login' | 'logout' | 'clear' | 'platforms' | 'progress';
 
 /** 查询 Camoufox 引擎状态（会尝试自动拉起桥；platform 指定平台登录态） */
 export async function camoufoxStatus(platform: string = 'boss'): Promise<CamoufoxStatus> {
@@ -319,63 +215,6 @@ export function camoufoxSend(jobId: string, greeting: string, os?: string): Prom
   return camoufoxCall<CamoufoxSendResult>('send', { jobId, greeting, os: os || undefined });
 }
 
-export interface CamoufoxResumeImageInput {
-  name: string;
-  data: string;
-}
-
-/**
- * 自动沟通（真正的浏览器操作）：打开可见浏览器窗口，真实点击「立即沟通」、
- * 真实键盘输入招呼语并发送，最后确认文字气泡。
- * 区别于 camoufoxSend（friend/add.json API 优先）。
- */
-export function camoufoxChat(
-  jobId: string,
-  greeting: string,
-  opts?: {
-    os?: string;
-    /** 平台（boss/liepin/zhaopin/job51），默认 boss */
-    platform?: string;
-    sendResumeImage?: boolean;
-    sendOnlineResume?: boolean;
-    /** 附件延迟（秒）：文字沟通确认 → 发送简历图片/在线简历 之间的类人等待基准（0=不额外等待） */
-    attachmentDelaySeconds?: number;
-    /** 目标岗位上下文（用于进入沟通后核验 HR/公司，防发错人） */
-    recruiterName?: string;
-    company?: string;
-    jobTitle?: string;
-    /** 岗位 URL（非 BOSS 平台投递定位用） */
-    url?: string;
-    /** 本地 base64 图片简历（发送图片简历附件时携带） */
-    resumeImages?: CamoufoxResumeImageInput[];
-    /**
-     * 'auto'（默认）首次打招呼投递：若 HR 已发来消息则返回 needsReply 供 AI 跟聊；
-     * 'reply' 发送渲染层生成的 AI 回复文本（配合 replyText）。仅 BOSS 支持；
-     * 'check' 只读巡检：仅打开会话读取 HR 历史（回传 hrHistory/needsReply），不发送任何消息。
-     */
-    mode?: 'auto' | 'reply' | 'check';
-    /** mode='reply' 时要发送的 AI 回复文本 */
-    replyText?: string;
-  }
-): Promise<CamoufoxChatResult> {
-  return camoufoxCall<CamoufoxChatResult>('chat', {
-    jobId,
-    greeting,
-    os: opts?.os || undefined,
-    platform: opts?.platform || 'boss',
-    sendResumeImage: Boolean(opts?.sendResumeImage),
-    sendOnlineResume: Boolean(opts?.sendOnlineResume),
-    attachmentDelaySeconds: Math.max(0, Number(opts?.attachmentDelaySeconds) || 4),
-    recruiterName: opts?.recruiterName || '',
-    company: opts?.company || '',
-    jobTitle: opts?.jobTitle || '',
-    url: opts?.url || '',
-    resumeImages: opts?.resumeImages || [],
-    mode: opts?.mode || 'auto',
-    replyText: opts?.replyText || '',
-  });
-}
-
 /** 打开 Camoufox 可见窗口扫码登录（platform 默认 boss；其余平台登录各自站点） */
 export function camoufoxLogin(timeout = 180, os?: string, platform: string = 'boss'): Promise<CamoufoxLoginResult> {
   return camoufoxCall<CamoufoxLoginResult>('login', { timeout, os: os || undefined, platform });
@@ -392,7 +231,7 @@ export function camoufoxStop(): void {
 }
 
 /**
- * 重启 Camoufox 引擎桥（先停后拉）：自动沟通误触关闭后自愈用。
+ * 重启 Camoufox 引擎桥（先停后拉）：引擎误触关闭后自愈用。
  * 返回重启后的状态；引擎未就绪/多轮重启仍失败时由调用方决定自动停止。
  */
 export async function camoufoxRestart(platform: string = 'boss'): Promise<CamoufoxStatus> {

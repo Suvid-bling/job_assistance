@@ -67,7 +67,6 @@ export function normalizeGreetingText(text: string): string {
 //   ② 输出结构化决策 JSON（continue / hr_rejected / declined + send_resume + interview），
 //      比关键词匹配更准，也让上层能识别 HR 拒绝 / 索要简历 / 面试邀约。
 // 安全不变量（AGENTS.md 2.1）：求职者口吻；只引用简历真实事实；不得承诺薪资/到岗时间/面试时间/不存在的能力。
-const REPLY_MIN_LEN = 8;
 /** 带给模型的历史消息条数（对齐觅星小臣 AI_CHAT.HISTORY_LIMIT = 20）。 */
 export const REPLY_HISTORY_LIMIT = 20;
 
@@ -102,29 +101,12 @@ export function hasFabricatedCommit(text: string): boolean {
   return FABRICATED_COMMIT.test(String(text || ''));
 }
 
-function isAcceptableReply(text: string, allowInfo = false): boolean {
-  const raw = String(text || '').trim();
-  if (raw.length < REPLY_MIN_LEN) return false;
-  if (looksLikeSerializationArtifact(raw)) return false;
-  // 招聘方口吻 / 承诺性表述一律拒绝（对齐 AGENTS.md 2.1 口吻与承诺红线）
-  if (/看到你的简历|你的简历|很匹配我们|匹配我们|欢迎.*沟通|期待你|候选人|我们团队|我们公司|团队主要涉及|你很匹配/.test(raw)) return false;
-  // 只有用户填写了「沟通信息」时，才允许回复引用薪资/面试/到岗等安排（否则视为 AI 自行承诺）
-  if (!allowInfo && FABRICATED_COMMIT.test(raw)) return false;
-  return true;
-}
-
-function buildLocalReply(jobTitle: string): string {
-  const t = String(jobTitle || '').trim();
-  return t
-    ? `您好，谢谢您联系我。我想了解更多关于「${t}」岗位的具体工作内容，希望能多沟通，谢谢。`
-    : '您好，谢谢您联系我。我想进一步了解岗位的具体工作内容，希望能多沟通，谢谢。';
-}
-
 export type ReplyOutcome = 'continue' | 'hr_rejected' | 'declined';
 
 export interface ReplyResult {
   text: string;
-  method: 'ai' | 'local' | 'none';
+  /** ai = 模型给出了决策；none = 没拿到 AI 结果（未配置 / 调用失败 / 输出无法解析），原因见 warning */
+  method: 'ai' | 'none';
   /** 结构化决策：continue=正常回复；hr_rejected=HR 已明确拒绝（不再回复）；declined=我方礼貌婉拒 */
   outcome: ReplyOutcome;
   /** AI 判断 HR 索要简历 → 发送后附带简历 */
@@ -168,8 +150,11 @@ export function looksLikeSerializationArtifact(text: string): boolean {
 }
 
 /** 解析 AI 返回的结构化决策；未按 JSON 输出时降级为普通回复（对齐觅星小臣 parseAiDecision）。 */
-function parseReplyDecision(raw: string): ReplyDecision | null {
-  const text0 = String(raw || '').trim();
+function parseReplyDecision(raw: unknown): ReplyDecision | null {
+  // callModel 在 jsonMode 下返回的是**已解析的对象**；绝不能先 String() 再解析
+  // （会得到 "[object Object]"，此前所有 AI 草稿都因此被判为异常）。
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return decisionFromObject(raw as Record<string, unknown>);
+  const text0 = String(raw ?? '').trim();
   if (!text0) return null;
   let text = text0;
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -182,30 +167,35 @@ function parseReplyDecision(raw: string): ReplyDecision | null {
     return fallback ? { ...EMPTY_DECISION, reply: fallback } : null;
   }
   try {
-    const obj = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
-    const outcome: ReplyOutcome =
-      obj.outcome === 'hr_rejected' || obj.outcome === 'declined' ? obj.outcome : 'continue';
-    // M-17：JSON 合法但 reply 非字符串时不能直接置空（会被当成「无需回复」丢弃真实回复）。
-    // 但也**绝不能** String(obj)：模型偶尔返回 {"reply":{"text":"…"}}，String() 得到 "[object Object]"
-    // 并被原样发给 HR。这里从对象/数组里取出真实文本；取不到 → 判解析失败（上层回退安全的通用回复）。
-    const rawReply = obj.reply;
-    if (rawReply == null) {
-      return { outcome, reply: '', sendResume: Boolean(obj.send_resume), interview: Boolean(obj.interview) };
-    }
-    const reply = normalizeGreetingText(replyTextFrom(rawReply));
-    if (!reply) return null;
-    return { outcome, reply, sendResume: Boolean(obj.send_resume), interview: Boolean(obj.interview) };
+    return decisionFromObject(JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>);
   } catch {
     const fallback = normalizeGreetingText(text.replace(/^["'「]|["'」]$/g, ''));
     return fallback ? { ...EMPTY_DECISION, reply: fallback } : null;
   }
 }
 
+function decisionFromObject(obj: Record<string, unknown>): ReplyDecision | null {
+  const outcome: ReplyOutcome =
+    obj.outcome === 'hr_rejected' || obj.outcome === 'declined' ? obj.outcome : 'continue';
+  // M-17：JSON 合法但 reply 非字符串时不能直接置空（会被当成「无需回复」丢弃真实回复）。
+  // 但也**绝不能** String(obj)：模型偶尔返回 {"reply":{"text":"…"}}，String() 得到 "[object Object]"。
+  // 这里从对象/数组里取出真实文本；取不到 → 判解析失败（返回空草稿 + 原因）。
+  const rawReply = obj.reply;
+  // reply 缺省或为空字符串 = 模型按约定表示「无需回复 / HR 已拒绝」，不是解析失败
+  if (rawReply == null || (typeof rawReply === 'string' && !rawReply.trim())) {
+    return { outcome, reply: '', sendResume: Boolean(obj.send_resume), interview: Boolean(obj.interview) };
+  }
+  const reply = normalizeGreetingText(replyTextFrom(rawReply));
+  if (!reply) return null;
+  return { outcome, reply, sendResume: Boolean(obj.send_resume), interview: Boolean(obj.interview) };
+}
+
 /**
  * 生成对 HR 最新消息的 AI 跟聊回复。
  * 用 callModel 直连（不缓存：回复与被回复消息强相关、随时间变化）。
  * 带最近 N 条完整聊天记录做多轮上下文，并输出结构化决策（对齐觅星小臣 / ghost-job）。
- * AI 未配置 / 生成失败 / 未通过口吻校验时回退到安全的通用回复；HR 明确拒绝时不回复。
+ * 产出仅作草稿（不自动发送，由用户查看后自行复制发送），因此不做口吻/承诺/长度校验，也没有模板兜底：
+ * AI 未配置 / 调用失败 / 输出无法解析时返回空草稿 + warning 写明原因，由用户点「重新生成」。
  */
 export async function generateReply(opts: {
   hrMessage: string;
@@ -220,12 +210,11 @@ export async function generateReply(opts: {
 }): Promise<ReplyResult> {
   const hr = String(opts.hrMessage || '').trim();
   if (!hr) return { text: '', method: 'none', outcome: 'continue', sendResume: false, interview: false };
-  const localFallback = buildLocalReply(opts.jobTitle || '');
-  const localResult = (warning: string): ReplyResult => ({
-    text: localFallback, method: 'local', outcome: 'continue', sendResume: false, interview: false, warning,
+  const failed = (warning: string): ReplyResult => ({
+    text: '', method: 'none', outcome: 'continue', sendResume: false, interview: false, warning,
   });
   if (!opts.model?.apiKey) {
-    return localResult('AI 尚未配置，本次使用通用回复。');
+    return failed('AI 尚未配置：请在「设置 → AI / LLM 配置」填写 API Key 后点「重新生成」。');
   }
   const comm = String(opts.communicationInfo || '').trim();
   try {
@@ -277,11 +266,11 @@ ${REPLY_DECISION_SPEC}`;
       opts.model,
       { temperature: 0.6, maxTokens: 2000, jsonMode: true, timeoutMs: 45000 }
     );
-    const decision = parseReplyDecision(String(content || ''));
+    const decision = parseReplyDecision(content);
     if (!decision) {
-      return localResult('AI 决策解析失败，已回退为通用回复。');
+      return failed('AI 输出无法解析，请点「重新生成」。');
     }
-    // HR 明确拒绝：不再回复（也不回退通用回复，避免打扰）
+    // HR 明确拒绝：不出草稿
     if (decision.outcome === 'hr_rejected') {
       return { text: '', method: 'ai', outcome: 'hr_rejected', sendResume: false, interview: false };
     }
@@ -289,12 +278,12 @@ ${REPLY_DECISION_SPEC}`;
     if (!decision.reply) {
       return { text: '', method: 'ai', outcome: decision.outcome, sendResume: decision.sendResume, interview: decision.interview };
     }
-    // 提供了「沟通信息」时才允许回复引用其中的薪资/面试/到岗等安排（否则仅用简历事实）
-    if (!isAcceptableReply(decision.reply, Boolean(comm))) {
-      return localResult('AI 回复未通过求职者口吻/承诺校验，已回退为通用回复。');
+    // 仅拦截 "[object Object]" / "undefined" 这类序列化残留（输出损坏，不是内容校验）
+    if (looksLikeSerializationArtifact(decision.reply)) {
+      return failed('AI 输出格式异常，请点「重新生成」。');
     }
     return { text: decision.reply, method: 'ai', outcome: decision.outcome, sendResume: decision.sendResume, interview: decision.interview };
   } catch (error: any) {
-    return localResult(`AI 回复生成失败（${error?.message || '未知原因'}），已回退为通用回复。`);
+    return failed(`AI 草稿生成失败（${error?.message || '未知原因'}），请点「重新生成」。`);
   }
 }

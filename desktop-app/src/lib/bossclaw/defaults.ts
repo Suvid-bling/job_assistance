@@ -47,6 +47,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   closeToTray: true,
   // 系统通知：首次投递验收 / 风控暂停 / 定时任务完成时弹一条，用户不必一直盯着窗口
   systemNotify: true,
+  // 消息预警：每 10 分钟扫描一次（下限 5 分钟，间隔越长请求越少，对账号越安全）；每个会话带最近 10 条真人消息
+  messageAlert: { intervalMin: 10, contextN: 10 },
   betweenJobsSeconds: 20,
   // 活跃时段（模拟真人作息）：时段外自动暂停投递。
   // 依据：操作时间戳分布是**服务端可见的账号级长期统计**，指纹补丁掩盖不了「24 小时无睡眠」；

@@ -232,7 +232,7 @@ export default function Resume() {
       data: desenImg.jpeg,
       createdAt: Date.now(),
     });
-    message.success('已存入「图片简历（投递附件）」，可在自动沟通中随打招呼语一并发送');
+    message.success('已存入「图片简历」');
   };
 
   // 页面加载时回填全局 store 中已保存的自定义打招呼语提示词（刷新后仍可见）

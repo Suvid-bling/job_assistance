@@ -47,6 +47,13 @@ const SUITES = [
   'update-check-regression.mjs',
   'material-path-regression.mjs',
   'greeting-regression.mjs',
+  // 消息预警：谁在等我回复的两阶段判定（误判只会在错误的时刻闪烁，不报错，必须断言）
+  'chat-alert-regression.mjs',
+  // 消息预警主进程侧：cookie 不落明文 / 只调只读接口 / code 7 与风控码映射 / 托盘闪烁状态机
+  'boss-chat-api-regression.mjs',
+  'alert-flash-regression.mjs',
+  'message-alert-cycle-regression.mjs',
+  'reply-draft-regression.mjs',
   'humanize-regression.mjs',
   'tailor-job-regression.mjs',
   'tailor-batch-regression.mjs',

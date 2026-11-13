@@ -4,11 +4,8 @@
 // 且星期匹配（空=每天）即触发，并按目标时刻去重（lastRunStamp 记录目标时刻 epoch）：
 //   ⚠️ 判据**只看容差窗口，不再额外要求「当前分钟 == 设定分钟」** —— 后者会让 90s 容差形同虚设：
 //   主线程被长任务/GC 阻塞跨过目标分钟、或笔记本休眠唤醒跨分钟时，触发会被静默丢弃且无留痕（见审查 #46）。
-//   deliver → useAutoChatStore.start(scope)（按条目平台范围/单轮上限，内部保留冷却/每日上限/
-//             首条验收/风控等安全守卫；引擎已在运行则跳过本次触发）
 //   collect → useScheduleStore.setCollectRequest({platforms})（由常驻工作台组件按平台消费触发采集）
 //   backup  → 调本地备份写盘（无备份目录则跳过并记日志）
-import { useAutoChatStore } from '@/store/useAutoChatStore';
 import { useScheduleStore } from '@/store/useScheduleStore';
 import { useRuntimeLogsStore } from '@/store/useRuntimeLogsStore';
 import { getBackupDir, writeLocalBackup } from './localBackup';
@@ -65,30 +62,6 @@ function platformText(platforms?: JobPlatform[]): string {
 async function fireAction(entry: ScheduleEntry): Promise<boolean> {
   const store = useScheduleStore.getState();
   switch (entry.action) {
-    case 'deliver': {
-      // 引擎为模块级单例，跨页后台运行；若已有批量沟通（含手动启动）在运行则跳过本次触发，
-      // 避免两条 run 争抢岗位（start() 内部 busy 互斥也会静默丢弃，这里显式留痕）。
-      if (useAutoChatStore.getState().chatRunning) {
-        useRuntimeLogsStore.getState().addChatLog({
-          level: 'warn',
-          stage: 'system',
-          msg: `⏰ 定时任务「${entry.name}」触发但已有批量沟通在运行，本次触发已跳过（将于本触发窗口内再次尝试）。`,
-        });
-        return false;
-      }
-      const maxCount = Math.max(0, Number(entry.limitPerRun) || 0);
-      useAutoChatStore.getState().start({
-        platforms: targetPlatforms(entry),
-        maxCount: maxCount > 0 ? maxCount : undefined,
-      });
-      useRuntimeLogsStore.getState().addChatLog({
-        level: 'info',
-        stage: 'system',
-        msg: `⏰ 定时任务「${entry.name}」触发：已启动批量自动投递（平台：${platformText(targetPlatforms(entry))}${maxCount > 0 ? `；本次上限 ${maxCount} 条` : ''}）。`,
-      });
-      notifyScheduleEvent('定时任务已触发：自动投递', `「${entry.name}」已开始批量投递（平台：${platformText(targetPlatforms(entry))}）。`);
-      return true;
-    }
     case 'collect': {
       // 置位采集请求（携带目标平台），由常驻工作台组件消费（跨页可触发）
       store.setCollectRequest({ platforms: targetPlatforms(entry) });

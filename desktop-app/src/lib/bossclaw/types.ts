@@ -81,6 +81,11 @@ export interface AppConfig {
   closeToTray?: boolean;
   /** 关键事件发系统通知（首次投递验收 / 风控暂停 / 定时任务完成），默认 true；关掉即静默 */
   systemNotify?: boolean;
+  /**
+   * 消息预警（只读）：定时经 HTTP 接口扫描 BOSS 会话，为「HR 在等我回复」的会话生成回复草稿并闪烁托盘。
+   * 绝不发送任何消息。intervalMin 不小于 5；contextN 为每个会话带给 AI 的最近真人消息条数。
+   */
+  messageAlert?: { intervalMin: number; contextN: number };
   betweenJobsSeconds: number;
   /**
    * 活跃时段（模拟真人作息）：时段外**自动暂停投递**。

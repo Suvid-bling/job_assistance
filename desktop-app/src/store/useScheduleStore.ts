@@ -1,14 +1,13 @@
 // 定时任务模块 store（Zustand persist → localStorage，纳入本地备份 BACKUP_KEYS）
-// 支持三类动作：定时投递(deliver) / 定时采集(collect) / 定时备份(backup)。
-// - deliver 支持限定「平台范围 platforms」（空=全部已启用平台）与「本次触发投递上限 limitPerRun」
-//   （0=不限，仍受冷却/每日上限/首条验收等安全规则约束）——由引擎 start(scope) 消费。
+// 支持两类动作：定时采集(collect) / 定时备份(backup)。
+// （定时投递 deliver 已随浏览器自动投递一并移除；旧数据在 migrate 中清理并提示一次。）
 // - collect 通过 collectRequest 请求（可携带目标平台）交由常驻的工作台组件消费触发采集。
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createSafePersistStorage } from '@/lib/persistSafe';
 import type { JobPlatform } from '@/lib/bossclaw/types';
 
-export type ScheduleAction = 'deliver' | 'collect' | 'backup';
+export type ScheduleAction = 'collect' | 'backup';
 
 export interface ScheduleEntry {
   id: string;
@@ -20,15 +19,10 @@ export interface ScheduleEntry {
   daysOfWeek: number[];
   enabled: boolean;
   /**
-   * 目标平台（deliver/collect 生效）：空/缺省 = 该动作当前全部已启用平台；
-   * 指定后仅处理所选平台（deliver 由引擎过滤；collect 由工作台按序逐个采集）。
+   * 目标平台（collect 生效）：空/缺省 = 当前全部已启用平台；
+   * 指定后仅处理所选平台（由工作台按序逐个采集）。
    */
   platforms?: JobPlatform[];
-  /**
-   * 本次触发的批量投递上限（仅 deliver 生效）：>0 表示单轮最多成功沟通 N 条即结束本次触发；
-   * 0/缺省 = 不限（跑完当前队列或触达冷却/每日上限等安全规则为止）。
-   */
-  limitPerRun?: number;
   /** 最近一次触发的"目标分钟" epoch（用于去重，防同一分钟重复触发） */
   lastRunStamp: number;
 }
@@ -48,6 +42,9 @@ interface ScheduleState {
   entries: ScheduleEntry[];
   /** 待执行的采集请求（调度器置位，Workbench 消费后清除） */
   collectRequest: CollectRequest | null;
+  /** 升级时被移除的旧「定时投递」任务数（>0 时定时任务页提示一次，用户确认后清零） */
+  droppedDeliver: number;
+  dismissDroppedDeliver: () => void;
   addEntry: (e: Omit<ScheduleEntry, 'id' | 'lastRunStamp'>) => ScheduleEntry;
   updateEntry: (id: string, patch: Partial<ScheduleEntry>) => void;
   removeEntry: (id: string) => void;
@@ -66,6 +63,8 @@ export const useScheduleStore = create<ScheduleState>()(
     (set) => ({
       entries: [],
       collectRequest: null,
+      droppedDeliver: 0,
+      dismissDroppedDeliver: () => set({ droppedDeliver: 0 }),
       addEntry: (e) => {
         const entry: ScheduleEntry = { ...e, id: uid(), lastRunStamp: 0 };
         set((s) => ({ entries: [...s.entries, entry] }));
@@ -87,7 +86,18 @@ export const useScheduleStore = create<ScheduleState>()(
       // 不是可恢复状态 —— 进程若在消费前退出，落盘会让下次启动时工作台挂载 effect 读到并执行，
       // 变成**非用户预期的开机自动采集**（真实网络动作，进入风控口径）。
       // 故只持久化定时任务表 entries，请求永远以 null 冷启动。
-      partialize: (s) => ({ entries: s.entries }),
+      partialize: (s) => ({ entries: s.entries, droppedDeliver: s.droppedDeliver }),
+      // v2：浏览器自动投递（含定时投递）已移除 → 清理旧 deliver 任务，并记下数量供页面提示一次。
+      version: 2,
+      migrate: (persisted, version) => {
+        const st = (persisted || {}) as { entries?: Array<ScheduleEntry & { action: string; limitPerRun?: number }>; droppedDeliver?: number };
+        if (version < 2) {
+          const all = Array.isArray(st.entries) ? st.entries : [];
+          const kept = all.filter((e) => e.action === 'collect' || e.action === 'backup').map(({ limitPerRun: _l, ...rest }) => rest as ScheduleEntry);
+          return { entries: kept, droppedDeliver: all.length - kept.length };
+        }
+        return st as { entries: ScheduleEntry[]; droppedDeliver: number };
+      },
     }
   )
 );
