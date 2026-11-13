@@ -76,7 +76,7 @@ node test/bridge-e2e.mjs        # 全链路（自动起一个隔离实例，会�
 
 | 工具 | 用途 |
 | --- | --- |
-| `bossclaw_app_state` | **实时**状态（内存 store）：路由 / 主题 / 引擎开关 / 完整 config / 队列统计 / 定时任务 / 自动沟通运行态 / 日志尾部，支持 `path` 裁剪与 `includeEngine` |
+| `bossclaw_app_state` | **实时**状态（内存 store）：路由 / 主题 / 引擎开关 / 完整 config / 队列统计 / 定时任务 / 消息预警运行态 / 日志尾部，支持 `path` 裁剪与 `includeEngine` |
 | `bossclaw_app_action` | 白名单动作（见下）+ `screenshot` 截图（返回 PNG 图片内容块，agent 能「看见」界面） |
 
 `bossclaw_app_action` 支持的动作：
@@ -93,7 +93,7 @@ node test/bridge-e2e.mjs        # 全链路（自动起一个隔离实例，会�
 | 浏览器只读探索 | `browserSearch{query,...}`（BOSS 官方 joblist）、`browserOpenJob{url}`、`browserReadPage`（URL/标题/正文文本/列表卡）、`browserReadJob{encryptJobId}`、`browserDomDump`（需 webview 引擎；cloak 引擎返回明确不可用） |
 | 投递（发送边界） | `deliveryDraft{greeting}`（半自动：开沟通+预填草稿**不发送**）；`deliverySendNow`（**仅 `executionMode==='auto'` 时生效**，复用应用自带安全引擎） |
 | 通用 UI 接管 | `uiSnapshot{scope?}`、`uiClick{selector?/label?}`、`uiType{into,value}`（contenteditable 聊天框走 `deliveryDraft`）、`uiSubmit`、`uiScroll{selector?/dy?/to?}`、`uiWait{ms?\|selector?}`；`scope:'app'` 操作应用界面，`scope:'webview'` 操作右栏 BOSS 页（白名单 query/click/type/scroll，禁止任意脚本/跳转） |
-| 自动沟通引擎 | `autochatStart{platforms?,maxCount?}`（冷却/每日上限保护）、`autochatStop`、`autochatStep{id?}`（单步，含冷却/上限/招呼语守卫）、`autochatStatus` |
+| 消息预警 | `alertStatus`（只读：开启状态 / 待回复数 / 上次扫描；开关与 wt2 Cookie 只能由用户在应用内操作） |
 | 完整数据读取 | `appDataFull{sections?,maxPending?,maxLogs?}`（简历/画像/方向/招呼语/pending/taskRuns/schedule/沟通日志全文；不含 base64 图片） |
 | 队列与任务接管 | `pendingApprove{id\|ids}`、`pendingReject{id\|ids}`、`pendingRerank`、`pendingPromote{ids?}`（只升 `approved→approved_queue`）、`pendingRemove{id}`、`taskStage{id,direct:next\|prev\|阶段}`（不改 `status` 为 success） |
 | 模块级控制 | `profileRebuild`（重建职业画像）、`resumeTailor{job,saveTo?:none\|greetings\|resume}`（定制简历；缺省 none 不落盘）、`greetingsAppend{items}`、`directionPlanRebuild`、`directionItem{id,patch}`、`tasksGenerate`（按方向建任务卡片，不自动投递；**保留 `cr_` 采集任务** —— 与首页「新建任务」同口径，`taskRuns` 是投递/采集共用的单一数组） |

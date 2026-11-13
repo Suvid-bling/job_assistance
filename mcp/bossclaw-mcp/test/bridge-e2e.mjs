@@ -243,8 +243,8 @@ try {
   record('接管 taskStage 未知任务拒绝', tskStageBad.isError === true && tskStageBad.data?.applied === false && /任务不存在/.test(tskStageBad.text || ''), tskStageBad.text?.split('\n')[1]?.slice(0, 80));
 
   const pauseGuard = await act('pauseDelivery', { minutes: 30 });
-  const autochatCool = await act('autochatStep', {});
-  record('接管 autochatStep 冷却守卫生效', autochatCool.isError === true && autochatCool.data?.applied === false && /冷却/.test(autochatCool.text || ''), autochatCool.text?.split('\n')[1]?.slice(0, 90));
+  const alertStatus = await act('alertStatus', {});
+  record('接管 alertStatus 只读状态可用', alertStatus.isError !== true && alertStatus.data?.applied === true && typeof alertStatus.data?.next?.pending === 'number', alertStatus.text?.split('\n')[1]?.slice(0, 90));
   await act('resumeDelivery', {});
 
   const badUi = await act('uiEvalRaw', { ops: ['eval'] });

@@ -57,11 +57,8 @@ const RENDERER_ACTIONS = [
   'uiSubmit',
   'uiScroll',
   'uiWait',
-  // B. 自动沟通引擎接管
-  'autochatStart',
-  'autochatStop',
-  'autochatStep',
-  'autochatStatus',
+  // B. 消息预警（只读状态；开关 / Cookie 只能由用户在应用内操作）
+  'alertStatus',
   // C. 完整数据读取
   'appDataFull',
   // D. 队列与任务深度接管
@@ -99,7 +96,7 @@ export const controlTools = [
     title: '应用实时状态',
     description:
       '从运行中的应用读取**实时**状态（内存中的 Zustand store）：当前路由 / 主题 / 引擎开关 / 侧栏动作、完整 config、' +
-      '岗位队列与统计、定时任务、自动沟通运行态、沟通日志尾部、agent 代答状态（agentAnswer：是否在线 / 队列 / 统计）。' +
+      '岗位队列与统计、定时任务、消息预警运行态、沟通日志尾部、agent 代答状态（agentAnswer：是否在线 / 队列 / 统计）。' +
       '支持点路径过滤以避免上下文膨胀。' +
       '需要应用以 BOSSCLAW_CONTROL=1 运行（bossclaw_app_start 默认开启）。',
     annotations: READ_ONLY,
@@ -132,7 +129,7 @@ export const controlTools = [
       const cfg = data?.settings?.config || {};
       const stats = data?.data?.stats || {};
       const pending = data?.data?.pendingCounts || {};
-      const auto = data?.autochat || {};
+      const alert = data?.messageAlert || {};
       const aa = data?.agentAnswer || {};
       const lastSeen = aa.lastSeenAgoMs === null || aa.lastSeenAgoMs === undefined ? '从未' : `${Math.round(aa.lastSeenAgoMs / 1000)}s 前`;
       const lines = [
@@ -152,7 +149,7 @@ export const controlTools = [
         `## 队列与统计`,
         `- 岗位：${Object.entries(pending).map(([k, v]) => `${k}=${v}`).join('，') || '无'}`,
         `- 统计：${Object.entries(stats).map(([k, v]) => `${k}=${v}`).join('，') || '无'}`,
-        `- 自动沟通：running=${auto.chatRunning}｜进度 ${auto.progress?.index ?? 0}/${auto.progress?.total ?? 0}｜当前 ${auto.activeChatId ?? '-'}`,
+        `- 消息预警：enabled=${alert.enabled}｜状态 ${alert.status ?? '-'}｜待回复 ${alert.pending ?? 0}｜上次扫描 ${alert.lastScanAt ? new Date(alert.lastScanAt).toLocaleTimeString() : '-'}`,
         `- 定时任务：${(data?.schedule?.entries || []).length} 条（启用 ${(data?.schedule?.entries || []).filter((e) => e.enabled).length}）`,
         ``,
         `## 素材`,
@@ -179,7 +176,7 @@ export const controlTools = [
       '对运行中的应用执行白名单动作。渲染层动作由 src/lib/controlRuntime.ts 强制校验，主进程动作由 control-bridge.cjs 处理。\n' +
       '**不绕过验证码 / 不修改安全上限 / 不抬高每日上限**。自动发送仅在用户已开启「全自动」（executionMode=\'auto\'）时对 agent 开放（deliverySendNow），此时仍复用应用自带安全投递引擎；review 模式下自动发送一律拒绝，只能 deliveryDraft 草拟+人工发送。\n' +
       '渲染层动作：\n' +
-      '  - navigate: { route: "home"|"workbench"|"resume"|"directions"|"tasks"|"schedule"|"stats"|"assistant"|"openclaw"|"autochat"|"settings" }\n' +
+      '  - navigate: { route: "home"|"workbench"|"resume"|"directions"|"tasks"|"schedule"|"stats"|"assistant"|"openclaw"|"autochat"(消息预警)|"settings" }\n' +
       '  - setTheme: { theme: "light"|"dark" }｜setSidebarCollapsed: { collapsed: boolean }\n' +
       '  - setAutoAssist: { enabled: boolean }（= 标题栏「投递引擎」开关，仅切换开关，不会自行投递）\n' +
       '  - pauseDelivery: { minutes?: number }（默认 30，写 config.pausedUntil）｜resumeDelivery: {}\n' +
@@ -200,7 +197,7 @@ export const controlTools = [
       '  - 通用 UI 接管（scope:"app" 操作应用界面 / "webview" 操作右栏 BOSS 页；禁止任意脚本与跳转）：uiSnapshot{scope?,selector?,limit?}｜' +
       'uiClick{scope?,selector?,label?,index?}｜uiType{scope?,selector?/into?,value,clear?}（contenteditable 聊天框请用 deliveryDraft）｜' +
       'uiSubmit{scope?,selector?}｜uiScroll{scope?,selector?,dy?,to?:top|bottom}｜uiWait{ms?|selector?,timeoutMs?}\n' +
-      '  - 自动沟通引擎：autochatStart{platforms?,maxCount?}（受冷却/每日上限保护）｜autochatStop｜autochatStep{id?}（单步，含冷却/上限/招呼语守卫）｜autochatStatus\n' +
+      '  - 消息预警：alertStatus（只读：是否开启 / 状态 / 待回复数 / 上次扫描；不提供开关与 Cookie 操作，不发送任何消息）\n' +
       '  - 完整数据读取：appDataFull{sections?,maxPending?,maxLogs?}（sections 见描述；不含 base64）\n' +
       '  - 队列与任务：pendingApprove{id|ids} / pendingReject{id|ids} / pendingRerank / pendingPromote{ids?}（只升 approved→approved_queue）/ pendingRemove{id} / taskStage{id,direct:next|prev|阶段}（不改 status 为 success）\n' +
       '  - 模块级（简历中心/定制简历/方向/任务）：profileRebuild{ }（重建职业画像）｜' +
